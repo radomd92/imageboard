@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="jumbotron">
+    <h1>Paradise</h1>
+    <p class="lead">Enjoy life and what it has to offer.</p>
+</div>
+<div class="row">
+    <div class="col-md-4">
+        <h2>Categories</h2>
+        <ul>
+            {% for category in categories %}
+            <li>
+                <a href="categories/{{ category.name }}">{{ category.name }}</a> ({{ category.images_count}})
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="col-md-4">
+        <h2>Tags</h2>
+        <ul>
+            {% for tag in tags %}
+            <li>
+                <a href="tags/{{ tag.name }}">{{ tag.name }}</a> ({{ tag.images_count}})
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="col-md-4">
+        <h2>Explore</h2>
+        <p>All images that await being tagged</p>
+    </div>
+</div>
+
+{% endblock %}

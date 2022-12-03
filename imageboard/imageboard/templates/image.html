@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <h2>{{ image.name }}</h2>
+    <div class="col-md-4">
+        <p>Added by {{ image.uploader.name }}</p>
+        <h3>Tags</h3>
+        {% for tag in image.tags %}
+        <a href="tags/{{ tag.name }}">
+            <button  class="btn btn-outline-info btn-sm">{{ tag.name }}</button>
+        </a> ({{ tag.images}})<br />
+        {% endfor %}
+    </div>
+    <div class="col-md-4">
+        <img src="{{image.link}}">
+    </div>
+    <div class="col-md-4">
+        <h2>Explore</h2>
+        <p>All images that await being tagged</p>
+    </div>
+</div>
+
+{% endblock %}
