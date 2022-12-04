@@ -4,13 +4,15 @@ Routes and views for the flask application.
 import _sha256
 import io
 
-import requests
+
 from flask import render_template, send_file
-from werkzeug.exceptions import ServiceUnavailable
+from werkzeug.exceptions import ServiceUnavailable, BadRequest
 from model.image import Image
 from serializers.image import Image as ImageSerializer
+from controllers import FileServerController
 from . import app
 
+controller = FileServerController(app)
 
 
 @app.route('/')
@@ -22,31 +24,44 @@ def home():
     )
 
 
-def file_server_get_image(link):
-    link = link.replace('$', '/')
-    req = requests.get(f"{app.config.get('FILE_SERVER')}/{link}", stream=True, verify=False)
-    if req.status_code != 200:
-        raise ServiceUnavailable(f"Backend file server returned HTTP {req.status_code}")
-    data = req.raw.read()
-    return send_file(
-        io.BytesIO(data),
-        mimetype=req.headers.get('Content-Type', 'image/jpeg'),
-        as_attachment=False,
-        download_name=link.split('/')[-1]
-    )
-
-
 @app.route('/image_link/<link>')
 def image_link(link):
     """Fetches images from image server. Link must replace / with $."""
-    return file_server_get_image(link)
+    return controller.get_image(link)
+
+
+@app.route('/explore/')
+@app.route('/explore/<link>')
+def explore(link=''):
+    print('link:', link)
+    """Fetches images from image server. Link must replace / with $."""
+
+    links = controller.get_link_as_json(link.replace('$', '/'))
+
+    for link_item in links:
+        link_item['link'] = link_item['name']
+        if link:
+            link_item['link'] = link + '$' + link_item['name']
+
+        link_item['text'] = link_item['name']
+        controller.reference_image(link_item['text'], link_item['link'])
+
+    return render_template(
+        'explorer.html',
+        title='File explorer',
+        links=links
+    )
 
 
 @app.route('/thumbnail/<link>/<size>')
 def image_thumbnail(link, size):
     """Fetches images from image server. Link must replace / with $."""
-    link = link.replace('$', '/') + f"§thumb§{size}"
-    return file_server_get_image(link)
+    if link.lower().split('.')[-1] in ['mpg', 'mp4', 'wmv', 'mov', 'avi']:
+        link = link.replace('$', '/') + f"§vthumb"
+    else:
+        link = link.replace('$', '/') + f"§thumb§{size}"
+
+    return controller.get_link(link)
 
 
 @app.route('/images/<image_id>')

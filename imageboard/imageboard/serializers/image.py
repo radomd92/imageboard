@@ -95,7 +95,7 @@ class Image(JSONBuilder):
 
     @property
     def image_path(self) -> str:
-        return self.model.image_path
+        return self.model.image_path.replace('/', '$')
 
     @property
     def uploader(self) -> User:

@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="row">
+    <div class="col-md-8">
+        <h2>Directory</h2>
+        <ul>
+            {% for link in links %}
+                {% if link.type == "directory" %}
+            <li>
+                <a href="/explore/{{ link.link }}">{{ link.text }}</a>
+            </li>
+                {% endif %}
+            {% endfor %}
+        </ul>
+        <h2>Images</h2>
+        <table>
+            <tr>
+                <th>Image</th>
+                <th>Name</th>
+                <th>Tags</th>
+            </tr>
+            {% for link in links %}
+                {% if link.type != "directory" %}
+            <tr>
+                <td><img src="/thumbnail/{{ link.link }}/small"></td>
+                <td><a href="/image_link/{{ link.link }}">{{ link.text }}</a> ({{ link.size // 1024 }} kB)</td>
+
+            </tr>
+                {% endif %}
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+{% endblock %}
