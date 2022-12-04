@@ -1,4 +1,5 @@
 from . import Model
+from .social import User
 
 
 class Tag(Model):
@@ -9,19 +10,6 @@ class Tag(Model):
     @classmethod
     def from_name(cls, name):
         return Tag(name)
-
-
-class User(Model):
-    def __init__(self, name=None):
-        self.name = name
-        self.registered = None
-        self.karma = None
-        self.privileges = None
-        self.banned = False
-
-    @classmethod
-    def from_id(cls, uploader_id):
-        uploader = User()
 
 
 class Image(Model):
