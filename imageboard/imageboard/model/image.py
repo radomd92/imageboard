@@ -32,6 +32,6 @@ class Image(Model):
         return Image(
             name='Bogus',
             uploader=User('oteka'),
-            image_path='/tmp/ika.jpg',
+            image_path='alldata$Documents$Python$19584030xVG.jpg',
             tags=[Tag('ijeon', 10), Tag('mulajs', 1544)]
         )
