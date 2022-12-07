@@ -1,18 +1,21 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="row">
+    <p><b>Actions:</b> <a href="/images/{{ image.image_id }}/edit">Edit</a></p>
     <h2>{{ image.name }}</h2>
     <div class="col-md-4">
-        <p>Added by {{ image.uploader.name }}</p>
+        <p>Added by an uploader</p>
         <h3>Tags</h3>
         {% for tag in image.tags %}
         <a href="tags/{{ tag.name }}">
-            <button  class="btn btn-outline-info btn-sm">{{ tag.name }}</button>
-        </a> ({{ tag.images}})<br />
+            <button class="btn btn-outline-info btn-sm">{{ tag.name }}</button>
+        </a> ({{ tag.images}})<br/>
         {% endfor %}
     </div>
     <div class="col-md-4">
-        <img src="/thumbnail/{{image.image_path}}/large">
+        <a href="/image_link/{{image.image_path}}">
+            <img src="/thumbnail/{{image.image_path}}/large">
+        </a>
     </div>
     <div class="col-md-4">
         <h2>Explore</h2>

@@ -13,25 +13,32 @@ class Tag(Model):
 
 
 class Image(Model):
-    def __init__(self, name: str, uploader: User, image_path: str, created_date=None, tags=None):
+    def __init__(self, name: str, image_path: str, uploader: User, image_id=None, file_size=0, hits=0, rating=0, created_date=None,
+                 tags=None):
         self.name = name
         self.created_date = created_date
         self.image_path = image_path
         self.uploader = uploader
-        self.size = None
-        self.file_size = None
-        self.hits = 0
-        self.rating = 0
+        self.image_id = image_id
+        self.file_size = file_size
+        self.hits = hits
+        self.rating = rating
         if tags is not None:
             self.tags = tags
         else:
             self.tags = []
 
     @classmethod
-    def from_id(cls, image_id):
-        return Image(
-            name='Bogus',
-            uploader=User('oteka'),
-            image_path='alldata/Documents/Python/19584030xVG.jpg',
-            tags=[Tag('ijeon', 10), Tag('mulajs', 1544)]
+    def from_db(cls, db_model):
+        print(db_model.id)
+        image = Image(
+            image_id=db_model.id,
+            name=db_model.name,
+            created_date=db_model.created_date,
+            image_path=db_model.image_path,
+            uploader=db_model.uploader,
+            file_size=db_model.file_size,
+            hits=db_model.hits,
+            rating=db_model.rating
         )
+        return image

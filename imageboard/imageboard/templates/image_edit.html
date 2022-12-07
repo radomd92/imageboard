@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <form method="POST" action="images/{{ image.image_id }}/edit/title">
+        <h2><input type="text" value="{{ image.name }}"/></h2>
+        <input type="submit" value="Save title"/>
+    </form>
+    <div class="col-md-4">
+        <p>Added by an uploader</p>
+        <h3>Tags</h3>
+        <form method="POST" action="images/{{ image.image_id }}/edit/tags">
+        <textarea name="tags" cols="25", rows="10">{% for tag in image.tags %}
+{{ tag.name }}{% endfor %}</textarea><br />
+            <input type="submit" value="Save tags"/>
+        </form>
+    </div>
+    <div class="col-md-4">
+        <a href="/image_link/{{image.image_path}}">
+            <img src="/thumbnail/{{image.image_path}}/large">
+        </a>
+    </div>
+</div>
+
+{% endblock %}

@@ -6,7 +6,7 @@
 </div>
 <div class="row">
     <div class="col-md-4">
-        <h2>Categories</h2>
+        <h2><a href="/categories">Categories</a></h2>
         <ul>
             {% for category in categories %}
             <li>
@@ -16,18 +16,20 @@
         </ul>
     </div>
     <div class="col-md-4">
-        <h2>Tags</h2>
+        <h2><a href="/tags">Tags</a></h2>
+    </div>
+    <div class="col-md-4">
+        <h2><a href="/explore">Explore</a></h2>
+        <p>All images that await being tagged</p>
         <ul>
-            {% for tag in tags %}
+            {% for image in images_needing_tags %}
             <li>
-                <a href="tags/{{ tag.name }}">{{ tag.name }}</a> ({{ tag.images_count}})
+                <a href="image/{{ image.image_path }}">
+                    <img src="image_link/{{ image.image_path }}">
+                </a> {{ image.name }} ({{ image.file_size }})
             </li>
             {% endfor %}
         </ul>
-    </div>
-    <div class="col-md-4">
-        <h2>Explore</h2>
-        <p>All images that await being tagged</p>
     </div>
 </div>
 

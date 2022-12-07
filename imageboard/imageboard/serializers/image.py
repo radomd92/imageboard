@@ -56,18 +56,25 @@ class Image(JSONBuilder):
     def __init__(self, image):
         super(Image, self).__init__()
         self.model = image
-        print(self.model.name)
         self.mapped_variables = [
+            ('image_id', 'image_id'),
             ('name', 'name'),
             ('created_date', 'created_date'),
             ('image_path', 'image_path'),
-            ('uploader', 'uploader'),
+            # ('uploader', 'uploader'),
             ('tags', 'tags'),
             ('hits', 'hits'),
             ('rating', 'rating'),
             ('file_size', 'file_size'),
-            ('size', 'size'),
         ]
+
+    @property
+    def name(self) -> str:
+        return self.model.name
+
+    @property
+    def image_id(self) -> str:
+        return str(self.model.image_id)
 
     @property
     def hits(self):
@@ -82,16 +89,8 @@ class Image(JSONBuilder):
         return self.model.file_size
 
     @property
-    def size(self):
-        return self.model.size
-
-    @property
-    def name(self) -> str:
-        return self.model.name
-
-    @property
     def created_date(self) -> str:
-        return self.model.created_date
+        return self.model.created_date.strftime("%Y-%m-%d %H:%M:%S")
 
     @property
     def image_path(self) -> str:
