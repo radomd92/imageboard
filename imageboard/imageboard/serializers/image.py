@@ -90,7 +90,10 @@ class Image(JSONBuilder):
 
     @property
     def created_date(self) -> str:
-        return self.model.created_date.strftime("%Y-%m-%d %H:%M:%S")
+        if self.model.created_date is not None:
+            return self.model.created_date.strftime-("%Y-%m-%d %H:%M:%S")
+        else:
+            return ""
 
     @property
     def image_path(self) -> str:
