@@ -16,7 +16,8 @@ A simple authentication with username and password will restrict access to the n
 
 ## Backend: Using Nginx XSLT file explorer
 **This is what you can use to explore your folders directly on the Nginx interface**
-Uncomment thes lines and changes the values to reflect your configuration:
+
+Uncomment these lines and changes the values to reflect your configuration:
 ```buildoutcfg
 xslt_string_param title $1;
 xslt_stylesheet /path/to/template.xslt;
@@ -32,7 +33,7 @@ Once you start nginx, you should find your images and be able to visualise them.
 **This is what the imageboard will be using to index images present on -- and served by -- your Nginx backend**
 
 ## Frontend: Configuration
-In `imageboard/imageboard` folder; crate `config.py` based on the `config_template.py`.
+In `imageboard/imageboard` folder; create `config.py` based on the `config_template.py`.
 
 ```
 FILE_SERVER = "https://user:pass@localhost:8443/images/"
