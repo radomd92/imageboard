@@ -21,16 +21,25 @@
     <div class="col-md-4">
         <h2><a href="/explore">Explore</a></h2>
         <p>All images that await being tagged</p>
-        <ul>
-            {% for image in images_needing_tags %}
-            <li>
-                <a href="image/{{ image.image_path }}">
-                    <img src="image_link/{{ image.image_path }}">
-                </a> {{ image.name }} ({{ image.file_size }})
-            </li>
-            {% endfor %}
-        </ul>
+        {% for image in images_needing_tags %}
+        <div class="imagecontainer img-thumbnail">
+            <a href="image_link/{{ image.image_path }}">
+                <img src="/thumbnail/{{ image.image_path }}/small">
+            </a>
+            <div class="caption">
+                <p><span class="imagename"><a href="/images/{{ image.image_id }}">{{ image.name }}</a></span></p>
+                <p>
+                        <span class="filesize">
+                            ({{ image.file_size // 1024}} KiB)
+                        </span>
+                    uploaded on {{ image.created_date }}
+                </p>
+            </div>
+        </div>
+        {% endfor %}
     </div>
+
+</div>
 </div>
 
 {% endblock %}

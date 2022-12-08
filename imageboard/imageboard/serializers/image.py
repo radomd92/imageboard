@@ -1,22 +1,21 @@
 from . import JSONBuilder
+from ..model.image import Image as ImageModel, Tag as TagModel
 
 
 class Tag(JSONBuilder):
     def __init__(self, tag):
+        if not isinstance(tag, TagModel):
+            raise TypeError(f"Expected Tagmodel, got {tag.__class__}")
+
         super(Tag, self).__init__()
         self.model = tag
         self.mapped_variables = [
             ('name', 'name'),
-            ('images', 'images'),
         ]
 
     @property
     def name(self):
         return self.model.name
-
-    @property
-    def images(self):
-        return self.model.images
 
 
 class User(JSONBuilder):
@@ -53,7 +52,10 @@ class User(JSONBuilder):
 
 
 class Image(JSONBuilder):
-    def __init__(self, image):
+    def __init__(self, image: ImageModel):
+        if not isinstance(image, ImageModel):
+            raise TypeError(f"Expected ImageModel, got {image.__class__}")
+
         super(Image, self).__init__()
         self.model = image
         self.mapped_variables = [
@@ -61,7 +63,7 @@ class Image(JSONBuilder):
             ('name', 'name'),
             ('created_date', 'created_date'),
             ('image_path', 'image_path'),
-            # ('uploader', 'uploader'),
+            ('uploader', 'uploader'),
             ('tags', 'tags'),
             ('hits', 'hits'),
             ('rating', 'rating'),
@@ -91,7 +93,7 @@ class Image(JSONBuilder):
     @property
     def created_date(self) -> str:
         if self.model.created_date is not None:
-            return self.model.created_date.strftime-("%Y-%m-%d %H:%M:%S")
+            return self.model.created_date.strftime("%Y-%m-%d %H:%M:%S")
         else:
             return ""
 
@@ -100,9 +102,13 @@ class Image(JSONBuilder):
         return self.model.image_path.replace('/', '$')
 
     @property
-    def uploader(self) -> User:
-        return User(self.model.uploader)
+    def uploader(self) -> str:
+        return str(self.model.uploader)
 
     @property
     def tags(self) -> list:
-        return [Tag(tag) for tag in self.model.tags]
+        print(self.model.tags)
+        if self.model.tags is not None:
+            return [Tag(tag) for tag in self.model.tags]
+        else:
+            return []

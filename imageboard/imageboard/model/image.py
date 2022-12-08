@@ -1,20 +1,25 @@
+from typing import List
+
 from . import Model
 from .social import User
 
 
 class Tag(Model):
-    def __init__(self, name, images=0):
+    def __init__(self, name, tag_id=None):
+        self.tag_id = tag_id
         self.name = name
-        self.images = images
 
     @classmethod
-    def from_name(cls, name):
-        return Tag(name)
+    def from_db(cls, db_model):
+        return Tag(db_model.name, tag_id=db_model.id)
+
+    def __repr__(self):
+        return f"Tag({self.name}, id={self.tag_id})"
 
 
 class Image(Model):
-    def __init__(self, name: str, image_path: str, uploader: User, image_id=None, file_size=0, hits=0, rating=0, created_date=None,
-                 tags=None):
+    def __init__(self, name: str, image_path: str, uploader: User, image_id=None,
+                 file_size=0, hits=0, rating=0, created_date=None, tags: list = None):
         self.name = name
         self.created_date = created_date
         self.image_path = image_path
@@ -23,22 +28,34 @@ class Image(Model):
         self.file_size = file_size
         self.hits = hits
         self.rating = rating
-        if tags is not None:
-            self.tags = tags
-        else:
-            self.tags = []
+        self.tags = tags
 
     @classmethod
     def from_db(cls, db_model):
         print(db_model.id)
         image = Image(
-            image_id=db_model.id,
             name=db_model.name,
-            created_date=db_model.created_date,
             image_path=db_model.image_path,
             uploader=db_model.uploader,
+            image_id=db_model.id,
             file_size=db_model.file_size,
             hits=db_model.hits,
-            rating=db_model.rating
+            tags=[Tag.from_db(t) for t in db_model.tags],
+            rating=db_model.rating,
+            created_date=db_model.created_date,
         )
+
         return image
+
+    def __repr__(self):
+        retstr = "<Image Model ("
+        retstr += " name=" + str(self.name)
+        retstr += " image_path=" + str(self.image_path)
+        retstr += " uploader=" + str(self.uploader)
+        retstr += " image_id=" + str(self.image_id)
+        retstr += " file_size=" + str(self.file_size)
+        retstr += " hits=" + str(self.hits)
+        retstr += " rating=" + str(self.rating)
+        retstr += " created_date=" + str(self.created_date)
+        retstr += ')>'
+        return retstr

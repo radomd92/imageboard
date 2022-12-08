@@ -20,7 +20,16 @@ class Tag(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
+
+
+class TagImage(db.Model):
+    __tablename__ = 'tag_image'
+    __table_args__ = (
+        db.UniqueConstraint('tag', 'image', name='unique_component_commit'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
     image = db.Column(db.Integer, db.ForeignKey('image.id'))
+    tag = db.Column(db.Integer, db.ForeignKey('tag.id'))
 
 
 class Image(db.Model):
@@ -33,6 +42,17 @@ class Image(db.Model):
     file_size = db.Column(db.Integer)
     hits = db.Column(db.Integer)
     uploader = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    @property
+    def tags(self):
+        ret = []
+        tags_for_image = db.session.query(TagImage, Tag.name)\
+            .join(Tag)\
+            .filter(TagImage.image == self.id)
+        for tag_image, data in tags_for_image:
+            ret.append(Tag(name=data, id=tag_image))
+
+        return ret
 
     @property
     def rating(self):
