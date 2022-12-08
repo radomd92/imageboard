@@ -16,14 +16,16 @@ http {
     server {
         charset UTF-8;
 
+        # HTTPS is not mandatory but is strongly recommended. Front-end will skip the check and will not error if your
+        # certicate is not trusted.
         listen 443 ssl;
         listen 8443 ssl;
         listen [::]:443 ssl;
         listen [::]:8443 ssl;
 
         # --- SSL Certificate is strongly recommended
-        ssl_certificate /this/folder/.nginx/imageboard.cert;
-        ssl_certificate_key /this/folder/.nginx/imageboard.key;
+        ssl_certificate /path/to/.nginx/imageboard.cert;
+        ssl_certificate_key /path/to/.nginx/imageboard.key;
 
         root /imagefolder;
 
@@ -40,11 +42,11 @@ http {
 
             ## Uncomment this line if you want to explore the backend directly
             # xslt_string_param title $1;
-            # xslt_stylesheet /this/folder/template.xslt;
+            # xslt_stylesheet /path/to/template.xslt;
 
             # kill cache
             auth_basic "Please enter your credentials";
-            auth_basic_user_file /this/folder/.htpasswd;
+            auth_basic_user_file /path/to/.htpasswd;
 
             add_header Last-Modified $date_gmt;
             add_header Cache-Control
