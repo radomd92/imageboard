@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="row">
+    <div class="col-md-8">
+        <h2>Search results</h2>
+        <table>
+            <tr>
+                <th>Image</th>
+                <th>Tags</th>
+            </tr>
+            {% for image in images %}
+            <tr>
+                <td><img src="/thumbnail/{{ image.image_path }}/small"></td>
+                <td><a href="/image_link/{{ image.image_path }}">{{ image.name }}</a> ({{ image.file_size // 1024 }} kB)</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+{% endblock %}

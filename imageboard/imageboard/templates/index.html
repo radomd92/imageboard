@@ -6,17 +6,18 @@
 </div>
 <div class="row">
     <div class="col-md-4">
-        <h2><a href="/categories">Categories</a></h2>
-        <ul>
-            {% for category in categories %}
-            <li>
-                <a href="categories/{{ category.name }}">{{ category.name }}</a> ({{ category.images_count}})
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-    <div class="col-md-4">
         <h2><a href="/tags">Tags</a></h2>
+        <p>Recent tags</p>
+        {% for tag in used_tags %}
+        <div class="imagecontainer img-thumbnail">
+            <a href="tags/{{ tag.tag_name }}">
+                <img src="/thumbnail/{{ tag.last_image.image_path }}/big">
+            </a>
+            <div class="caption">
+                <p><span class="imagename"><a href="/images/{{ tag.last_image.image_id }}">{{ tag.tag_name }}</a>  ({{ tag.images }}) </span></p>
+            </div>
+        </div>
+        {% endfor %}
     </div>
     <div class="col-md-4">
         <h2><a href="/explore">Explore</a></h2>

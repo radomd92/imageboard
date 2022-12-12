@@ -25,7 +25,18 @@ def home():
     return render_template(
         'index.html',
         title='Main page',
-        images_needing_tags=image.get_image_needing_tags()
+        images_needing_tags=image.get_image_needing_tags(),
+        used_tags=image.get_used_tags(),
+    )
+
+
+@app.route('/search/<searchterm>')
+def search(searchterm):
+    """Renders the home page."""
+    return render_template(
+        'search.html',
+        title='Search results',
+        images=image.get_search_results(searchterm),
     )
 
 
@@ -37,7 +48,39 @@ def image_link(link):
         io.BytesIO(data),
         mimetype=mimetype,
         as_attachment=False,
-        download_name=link.split('/')[-1]
+        download_name=link.replace('$', '/').split('/')[-1]
+    )
+
+
+@app.route('/explore_recursive/')
+@app.route('/explore_recursive/<link>')
+def explore_recursively(link='', depth=7):
+    """Fetches images from image server. Link must replace / with $."""
+
+    links = file_server.get_link_as_json(link.replace('$', '/'))
+    for link_item in links:
+        link_item['link'] = link_item['name']
+        if link:
+            link_item['link'] = link + '$' + link_item['name']
+
+        link_item['text'] = link_item['name']
+        file_server.reference_image_depth(
+            link_item['text'],
+            link_item['link'],
+            depth,
+            link_item.get('size', None)
+        )
+        if depth > 0 and link_item['type'] == 'directory':
+            print('    ' * depth + "Recursive call")
+            try:
+                explore(link_item['link'], depth-1)
+            except Exception as exc:
+                print(exc)
+
+    return render_template(
+        'explorer.html',
+        title='File explorer',
+        links=links
     )
 
 
@@ -47,7 +90,6 @@ def explore(link=''):
     """Fetches images from image server. Link must replace / with $."""
 
     links = file_server.get_link_as_json(link.replace('$', '/'))
-
     for link_item in links:
         link_item['link'] = link_item['name']
         if link:

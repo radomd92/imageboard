@@ -2,7 +2,8 @@ from ..database import Image, Tag, TagImage
 from ..model.image import Image as ImageModel, Tag as TagModel
 from ..serializers.image import Image as ImageSerializer
 from .. import db
-from .. controllers import BaseController
+from ..controllers import BaseController
+from sqlalchemy.sql import text
 from werkzeug.exceptions import NotFound
 
 
@@ -29,6 +30,21 @@ class ImageController(BaseController):
                 return ImageModel.from_db(db_image)
             else:
                 raise NotFound(f'[NO_IMAGE_0] No image with ID {image_id}')
+
+    def get_used_tags(self):
+        tags = []
+        sql = "select name, images, max from tag_with_last_imageid;"
+        with self.app.app_context():
+            query = db.session.execute(sql)
+            for tag_name, images, last_image_id in query:
+                last_image = self.get_image_from_id(last_image_id)
+                tags.append({
+                    'tag_name': tag_name,
+                    'last_image': ImageSerializer(last_image).serialize(),
+                    'images': images
+                })
+
+        return tags
 
     def get_tagged_images(self):
         images = []
@@ -94,8 +110,8 @@ class ImageController(BaseController):
 
             # Add all tags
             for tag in tags_as_models:
-                db_tag_image = db.session.query(TagImage)\
-                    .filter(TagImage.image == image_id)\
+                db_tag_image = db.session.query(TagImage) \
+                    .filter(TagImage.image == image_id) \
                     .filter(TagImage.tag == tag.tag_id).first()
                 if not db_tag_image:
                     new_tag_association = TagImage(tag=tag.tag_id, image=image_id)
@@ -104,4 +120,25 @@ class ImageController(BaseController):
 
             db.session.commit()
 
+    def get_search_results(self, term):
+        images = []
 
+        with self.app.app_context():
+            sql = text("select "\
+                       "id, image_path, name, created_date, file_size, hits, uploader, rating "\
+                       "from tagged_images "\
+                       "where name like :term "\
+                       "order by created_date desc "\
+                       "limit 50;")
+
+            query = db.session.execute(sql, {'term': '%' + term + '%'})
+            for image_id, image_path, name, created_date, file_size, hits, uploader, rating in query:
+                print(image_id, image_path, name, created_date, file_size, hits, uploader, rating)
+                img_model = ImageModel(
+                    image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
+                    hits=hits, rating=rating, tags=[]
+                )
+                serializer = ImageSerializer(img_model)
+                images.append(serializer.serialize())
+
+        return images
