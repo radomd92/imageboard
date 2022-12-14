@@ -6,7 +6,6 @@ import io
 
 import urllib3
 from flask import render_template, request, send_file
-
 from . import app
 from .controllers.file_server import FileServerController
 from .controllers.image import ImageController
@@ -26,17 +25,41 @@ def home():
         'index.html',
         title='Main page',
         images_needing_tags=image.get_image_needing_tags(),
-        used_tags=image.get_used_tags(),
+        used_tags=image.get_used_tags(8),
     )
 
 
-@app.route('/search/<searchterm>')
-def search(searchterm):
-    """Renders the home page."""
+@app.route('/tags')
+def get_used_tags():
+    return render_template(
+        'tag.html',
+        title='Tag',
+        images_from_tag=None,
+        tags=image.get_used_tags(0),
+    )
+
+
+@app.route('/tags/<tag_name>')
+def get_images_tags(tag_name=None):
+    return render_template(
+        'tag.html',
+        title='Tag',
+        tags=None,
+        images_from_tag=image.get_images_with_tag(tag_name),
+    )
+
+
+@app.route('/search', methods=['POST', 'GET'])
+def search():
+    search_term = request.form.get('term')
+    image_list = []
+    if search_term is not None:
+        image_list = image.get_search_results(search_term)
+
     return render_template(
         'search.html',
         title='Search results',
-        images=image.get_search_results(searchterm),
+        images=image_list,
     )
 
 
@@ -73,7 +96,7 @@ def explore_recursively(link='', depth=7):
         if depth > 0 and link_item['type'] == 'directory':
             print('    ' * depth + "Recursive call")
             try:
-                explore(link_item['link'], depth-1)
+                return explore(link_item['link'], depth-1)
             except Exception as exc:
                 print(exc)
 
@@ -141,6 +164,19 @@ def edit_image(image_id=None):
 def edit_image_title(image_id=None):
     title = request.form.get('title')
     current_image = image.set_image_title(image_id, title)
+    return render_template(
+        'redirect.html',
+        redirect_to="/images/" + str(current_image.image_id),
+        title=current_image.name,
+        message="Title edit successful. You'll be redirected shortly...",
+    )
+
+
+@app.route('/images/<image_id>/comment', methods=['POST'])
+def add_user_comment(image_id=None):
+    text = request.form.get('comment')
+    reply_to = request.form.get('reply_to', None)
+    current_image = image.add_comment(image_id, text, None)
     return render_template(
         'redirect.html',
         redirect_to="/images/" + str(current_image.image_id),

@@ -68,6 +68,7 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
+    password = db.Column(db.String(256))
     registered = db.Column(db.DateTime(timezone=True))
     karma = db.Column(db.Integer)
     privileges = db.Column(db.String(100))

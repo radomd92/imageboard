@@ -1,0 +1,38 @@
+>{% extends "layout.html" %}
+{% block content %}
+
+<div class="row">
+    <div class="col-md-8">
+        <h2>Tags</h2>
+        {% if tags != None %}
+        {% for tag in tags %}
+        <div>
+            <h3>{{ tag.tag_name }} ({{ tag.images }} files)</h3>
+            <img src="/thumbnail/{{ tag.last_image.image_path }}/large"/>
+            <p><b>Other tags for this file</b>:
+                {% for other_tag in tag.last_image.tags %}
+                <a href="/tags/{{ other_tag.name }}"><span class="label label-default">{{ other_tag.name }}</span></a>
+                {% endfor %}
+            </p>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% if images_from_tag != None %}
+        {% for image_from_tag in images_from_tag %}
+        <div class="img-thumbnail">
+            <a href="/images/{{ image_from_tag.image.image_id }}">
+            <img src="/thumbnail/{{ image_from_tag.image.image_path }}/large"/>
+            </a>
+            <p>{{ image_from_tag.image.name }}&nbsp;(<a href="/image_link/{{ image_from_tag.image.image_path }}">full&nbsp;size</a>)</p>
+            <div class="img-thumbnail">Tags:&nbsp;
+                {% for tag in image_from_tag.image.tags %}
+                <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

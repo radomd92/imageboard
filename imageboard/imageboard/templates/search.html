@@ -2,6 +2,11 @@
 {% block content %}
 
 <div class="row">
+    <form action="/search" method="post">
+        <input type="text" name="term"/>
+        {{ csrf }}
+        <input type="submit" value="Search"/>
+    </form>
     <div class="col-md-8">
         <h2>Search results</h2>
             {% for image in images %}
@@ -11,12 +16,11 @@
                 {% for tag in image.tags %}
                 <a href="tags/{{ tag.name }}">
                     <button class="btn btn-outline-info btn-sm">{{ tag.name }}</button>
-                </a> ({{ tag.images}})<br/>
+                </a>&nbsp;({{ tag.images }})<br/>
                 {% endfor %}
                 <hr />
             </div>
             {% endfor %}
-
     </div>
 </div>
 

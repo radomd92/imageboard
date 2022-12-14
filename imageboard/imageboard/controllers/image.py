@@ -1,4 +1,4 @@
-from ..database import Image, Tag, TagImage
+from ..database import Image, Tag, TagImage, Message
 from ..model.image import Image as ImageModel, Tag as TagModel
 from ..serializers.image import Image as ImageSerializer
 from .. import db
@@ -23,6 +23,12 @@ class TagController(BaseController):
 
 class ImageController(BaseController):
 
+    def add_comment(self, image_id, message_text, reply_to=None):
+        with self.app.app_context():
+            message = Message(image=image_id, text=message_text, reply_to=reply_to)
+            db.session.add(message)
+            db.session.commit()
+
     def get_image_from_id(self, image_id):
         with self.app.app_context():
             db_image = db.session.query(Image).filter(Image.id == image_id).first()
@@ -31,20 +37,35 @@ class ImageController(BaseController):
             else:
                 raise NotFound(f'[NO_IMAGE_0] No image with ID {image_id}')
 
-    def get_used_tags(self):
-        tags = []
-        sql = "select name, images, max from tag_with_last_imageid;"
+    def get_images_with_tag(self, tag_name):
+        images = []
+        sql = f"select tag_name, id from images_with_tag where tag_name = '{tag_name}';"
         with self.app.app_context():
             query = db.session.execute(sql)
-            for tag_name, images, last_image_id in query:
-                last_image = self.get_image_from_id(last_image_id)
-                tags.append({
-                    'tag_name': tag_name,
-                    'last_image': ImageSerializer(last_image).serialize(),
-                    'images': images
+            for tag_name_, image_id in query:
+                last_image = self.get_image_from_id(image_id)
+                images.append({
+                    'tag_name': tag_name_,
+                    'image': ImageSerializer(last_image).serialize(),
                 })
 
-        return tags
+        return images
+
+    def get_used_tags(self, min_images=3):
+        tags = []
+        sql = f"select name, images, max from tag_with_last_imageid where max >= {min_images};"
+        with self.app.app_context():
+            query = db.session.execute(sql)
+            for tag_name_, images, last_image_id in query:
+                last_image = self.get_image_from_id(last_image_id)
+                if images >= min_images:
+                    tags.append({
+                        'tag_name': tag_name_,
+                        'last_image': ImageSerializer(last_image).serialize(),
+                        'images': images
+                    })
+
+            return tags
 
     def get_tagged_images(self):
         images = []
@@ -115,7 +136,6 @@ class ImageController(BaseController):
                     .filter(TagImage.tag == tag.tag_id).first()
                 if not db_tag_image:
                     new_tag_association = TagImage(tag=tag.tag_id, image=image_id)
-                    # print(tag.name, tag.tag_id, image_id)
                     db.session.add(new_tag_association)
 
             db.session.commit()
@@ -124,11 +144,11 @@ class ImageController(BaseController):
         images = []
 
         with self.app.app_context():
-            sql = text("select "\
-                       "id, image_path, name, created_date, file_size, hits, uploader, rating "\
-                       "from tagged_images "\
-                       "where name like :term "\
-                       "order by created_date desc "\
+            sql = text("select " +
+                       "id, image_path, name, created_date, file_size, hits, uploader, rating " +
+                       "from tagged_images " +
+                       "where name like :term or image_path like :term " +
+                       "order by created_date desc " +
                        "limit 50;")
 
             query = db.session.execute(sql, {'term': '%' + term + '%'})
