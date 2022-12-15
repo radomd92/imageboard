@@ -15,11 +15,20 @@ class User(Model):
 
 
 class Message(Model):
-    def __init__(self, from_user: User, text: str, reply_to: 'Message' = None):
+    def __init__(self, from_user: User, text: str, reply_to: int = None, message_id=None, message_date=None):
         self.from_user = from_user
         self.text = text
         self.reply_to = reply_to
+        self.message_id = message_id
+        self.message_date = message_date
+        self.replies = []
 
-    @property
-    def sent_date(self):
-        return
+    @staticmethod
+    def from_db(message_db):
+        return Message(
+            from_user=message_db.from_user,
+            text=message_db.message,
+            message_id=message_db.id,
+            message_date=message_db.message_date
+        )
+

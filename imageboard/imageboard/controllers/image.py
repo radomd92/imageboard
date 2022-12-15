@@ -1,8 +1,10 @@
 from ..database import Image, Tag, TagImage, Message
 from ..model.image import Image as ImageModel, Tag as TagModel
+from ..model.social import Message as MessageModel
 from ..serializers.image import Image as ImageSerializer
 from .. import db
 from ..controllers import BaseController
+from ..controllers.social import Message as MessageController
 from sqlalchemy.sql import text
 from werkzeug.exceptions import NotFound
 
@@ -28,6 +30,12 @@ class ImageController(BaseController):
             message = Message(image=image_id, text=message_text, reply_to=reply_to)
             db.session.add(message)
             db.session.commit()
+            return self.get_image_from_id(image_id)
+
+    def load_comments(self, image_id):
+        with self.app.app_context():
+            messages = db.session.query(Message).filter(Message.image == image_id)
+            return [MessageController(self.app).get_from_id(message.id) for message in messages]
 
     def get_image_from_id(self, image_id):
         with self.app.app_context():

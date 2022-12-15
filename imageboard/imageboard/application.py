@@ -10,6 +10,7 @@ from . import app
 from .controllers.file_server import FileServerController
 from .controllers.image import ImageController
 from .serializers.image import Image as ImageSerializer
+from .serializers.social import Message as MessageSerializer
 
 
 urllib3.disable_warnings()
@@ -176,7 +177,7 @@ def edit_image_title(image_id=None):
 def add_user_comment(image_id=None):
     text = request.form.get('comment')
     reply_to = request.form.get('reply_to', None)
-    current_image = image.add_comment(image_id, text, None)
+    current_image = image.add_comment(image_id, text, reply_to)
     return render_template(
         'redirect.html',
         redirect_to="/images/" + str(current_image.image_id),
@@ -205,10 +206,12 @@ def edit_image_tag(image_id=None):
 def images(image_id=None):
     """Fetches an image by a given ID."""
     current_image = image.get_image_from_id(image_id)
+    comments = image.load_comments(image_id)
     return render_template(
         'image.html',
         title='Image',
-        image=ImageSerializer(current_image).serialize()
+        image=ImageSerializer(current_image).serialize(),
+        comments=[MessageSerializer(comment).serialize() for comment in comments]
     )
 
 

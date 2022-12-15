@@ -83,3 +83,4 @@ class Message(db.Model):
     image = db.Column(db.Integer, db.ForeignKey('image.id'))
     text = db.Column(db.String(500))
     reply_to = db.Column(db.Integer, db.ForeignKey('message.id'))
+    message_date = db.Column(db.DateTime(timezone=True))

@@ -3,29 +3,77 @@
 <div class="row">
     <p><a href="/images/{{ image.image_id }}/edit">Edit this page</a></p>
     <h2>{{ image.name }}</h2>
-    <div class="col-md-4">
-        {% if image.uploader == 'None' %}
-        <p>Unknown uploader</p>
-        {% else %}
-        <p>Added by {{ image.uploader }}</p>
-        {% endif %}
-        <h3>Tags</h3>
-        {% for tag in image.tags %}
-        <a href="/tags/{{ tag.name }}">
-            <span class="label label-default">{{ tag.name }}</span>
-        </a> ({{ tag.images}})<br/>
-        {% endfor %}
-    </div>
-    <div class="col-md-4">
+    <div>
         <div class="img-thumbnail">
             <a href="/image_link/{{ image.image_path }}">
+                {% if image.image_path.split('.')[-1].lower() in 'jpg jpeg gif bmp tiff' %}
+                <img src="/image_link/{{ image.image_path }}" style="width:600px">
+                {% elif image.image_path.split('.')[-1].lower() in 'mpg mpeg mp4 m4v mov 3gp avi wmv' %}
                 <img src="/thumbnail/{{ image.image_path }}/large">
+                <br />(Video thumbnail)
+                {% endif %}
+
             </a>
+            <hr />
+            <p>
+            {% for tag in image.tags %}
+            <a href="/tags/{{ tag.name }}">
+                <span class="label label-default" style="display: inline-block;">{{ tag.name }}</span>
+                {{ tag.images }}
+            </a>
+            {% endfor %}
+            </p>
         </div>
     </div>
-    <div class="col-md-4">
-        <h2>Comments</h2>
-        None yet.
+
+    <div>
+        <div>
+            {% if image.uploader == 'None' %}
+            <p>Unknown uploader</p>
+            {% else %}
+            <p>Added by {{ image.uploader }}</p>
+            {% endif %}
+        </div>
+
+        <div>
+            <div class="detailBox">
+                <div class="titleBox">
+                    <label>Comments</label>
+                    <button type="button" class="close" aria-hidden="true">&times;</button>
+                </div>
+                <div class="commentBox">
+                    <ul class="commentList">
+                        {% for comment in comments %}
+                        Anonymous (<span class="date sub-text">{{ comment.message_date }}</span>)
+                        <li>
+                            <div class="commentText">
+                                <p class="">{{ comment.text }}</p>
+                            <hr />
+                            <form action="/images/{{ image.image_id }}/comment" method="post">
+                            <div class="form-group">
+                                <input class="form-control" name="comment">
+                                <input type="hidden" name='reply_to' value="{{ comment.message_id }}"/>
+                            </div>
+                            <div class="form-group">
+                                <button class="btn btn-default">Reply</button>
+                            </div>
+                            </div>
+                        </li>
+
+                        </form>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <form action="/images/{{ image.image_id }}/comment" method="post">
+                    <div class="form-group">
+                        <textarea class="form-control" name="comment"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-default">Add Comment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
