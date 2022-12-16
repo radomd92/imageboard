@@ -3,6 +3,7 @@ import requests
 from werkzeug.exceptions import ServiceUnavailable, BadRequest
 from .. import db
 from ..database import Image
+from ..model.image import Image as ImageModel
 
 
 class FileServerController(object):
@@ -44,14 +45,16 @@ class FileServerController(object):
 
     def reference_image(self, image_name, link, size=None):
         with self.app.app_context():
-            if db.session.query(Image.id).filter_by(image_path=link).first() is None:
+            data = db.session.query(Image).filter_by(image_path=link).first()
+            if data is None:
                 if size is not None:
                     image = Image(name=image_name, image_path=link, file_size=size)
                     db.session.add(image)
                     db.session.commit()
                 print(f'referencing image {image_name}, link: {link}')
             else:
-                print(f'image {image_name} already referenced link: {link}')
+                print(f'image {image_name} already referenced link: {link}: Image ID #{data.id}')
+                return ImageModel.from_db(data)
 
     def reference_image_depth(self, image_name, link, depth, size=None):
         if depth == 0:

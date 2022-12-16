@@ -32,7 +32,6 @@ class Image(Model):
 
     @classmethod
     def from_db(cls, db_model):
-        print(db_model.id)
         image = Image(
             name=db_model.name,
             image_path=db_model.image_path,

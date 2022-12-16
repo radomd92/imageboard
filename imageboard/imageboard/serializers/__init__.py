@@ -36,7 +36,6 @@ class JSONBuilder(Builder):
             elif attribute_value is None:
                 main_node[json_node_name] = None
             elif hasattr(attribute_value, '__iter__'):
-                print(json_node_name, '=', attribute_value)
                 main_node[json_node_name] = []
                 for e in attribute_value:
                     if isinstance(e, Builder):

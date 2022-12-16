@@ -45,9 +45,9 @@ class ImageController(BaseController):
             else:
                 raise NotFound(f'[NO_IMAGE_0] No image with ID {image_id}')
 
-    def get_images_with_tag(self, tag_name):
+    def get_images_with_tag(self, tag_name, page=1):
         images = []
-        sql = f"select tag_name, id from images_with_tag where tag_name = '{tag_name}';"
+        sql = f"select tag_name, id from images_with_tag where tag_name = '{tag_name}' limit 25 offset {25*(page-1)};"
         with self.app.app_context():
             query = db.session.execute(sql)
             for tag_name_, image_id in query:
@@ -161,7 +161,6 @@ class ImageController(BaseController):
 
             query = db.session.execute(sql, {'term': '%' + term + '%'})
             for image_id, image_path, name, created_date, file_size, hits, uploader, rating in query:
-                print(image_id, image_path, name, created_date, file_size, hits, uploader, rating)
                 img_model = ImageModel(
                     image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
                     hits=hits, rating=rating, tags=[]

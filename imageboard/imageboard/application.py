@@ -11,6 +11,7 @@ from .controllers.file_server import FileServerController
 from .controllers.image import ImageController
 from .serializers.image import Image as ImageSerializer
 from .serializers.social import Message as MessageSerializer
+from .utils import paginated
 
 
 urllib3.disable_warnings()
@@ -41,12 +42,14 @@ def get_used_tags():
 
 
 @app.route('/tags/<tag_name>')
-def get_images_tags(tag_name=None):
+@paginated
+def get_images_tags(tag_name=None, page=0):
     return render_template(
         'tag.html',
         title='Tag',
         tags=None,
-        images_from_tag=image.get_images_with_tag(tag_name),
+        page=page,
+        images_from_tag=image.get_images_with_tag(tag_name, page),
     )
 
 
@@ -120,11 +123,14 @@ def explore(link=''):
             link_item['link'] = link + '$' + link_item['name']
 
         link_item['text'] = link_item['name']
-        file_server.reference_image(
+        already_existing_image = file_server.reference_image(
             link_item['text'],
             link_item['link'],
             link_item.get('size', None)
         )
+        link_item['image_db_data'] = None
+        if already_existing_image is not None:
+            link_item['image_db_data'] = ImageSerializer(already_existing_image).serialize()
 
     return render_template(
         'explorer.html',
@@ -189,7 +195,6 @@ def add_user_comment(image_id=None):
 @app.route('/images/<image_id>/edit/tags', methods=['POST'])
 def edit_image_tag(image_id=None):
     data = request.form.get('tags').split("\r\n")
-    print(data)
     tags = [t.strip().lower() for t in data]
 
     current_image = image.get_image_from_id(image_id)

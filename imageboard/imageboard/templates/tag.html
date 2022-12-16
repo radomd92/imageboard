@@ -1,4 +1,4 @@
->{% extends "layout.html" %}
+{% extends "layout.html" %}
 {% block content %}
 
 <div class="row">
@@ -21,9 +21,10 @@
         {% for image_from_tag in images_from_tag %}
         <div class="img-thumbnail">
             <a href="/images/{{ image_from_tag.image.image_id }}">
-            <img src="/thumbnail/{{ image_from_tag.image.image_path }}/large"/>
+                <img src="/thumbnail/{{ image_from_tag.image.image_path }}/large"/>
             </a>
-            <p>{{ image_from_tag.image.name }}&nbsp;(<a href="/image_link/{{ image_from_tag.image.image_path }}">full&nbsp;size</a>)</p>
+            <p>{{ image_from_tag.image.name }}&nbsp;(<a href="/image_link/{{ image_from_tag.image.image_path }}">full&nbsp;size</a>)
+            </p>
             <div class="img-thumbnail">Tags:&nbsp;
                 {% for tag in image_from_tag.image.tags %}
                 <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
@@ -34,5 +35,17 @@
         {% endif %}
     </div>
 </div>
+<p>Navigate
+    <a href="?page={{ page-100 }}"> <<&nbsp;Page&nbsp;-100&nbsp;</a>
+    <a href="?page={{ page-10 }}"> <<&nbsp;Page&nbsp;-10&nbsp;</a>|
+    <a href="?page={{ page-5 }}"> <<&nbsp;Page&nbsp;-5&nbsp;</a>|
+    <a href="?page={{ page-2 }}"> <&nbsp;Page&nbsp;-2&nbsp;</a>|
+    <a href="?page={{ page-1 }}"><strong>Page -1</strong>&nbsp;</a>|
 
+    <a href="?page={{ page+1 }}"><strong>Page&nbsp;+1</strong>&nbsp;</a>|
+    <a href="?page={{ page+2 }}">Page&nbsp;+3&nbsp;>> &nbsp;</a>|
+    <a href="?page={{ page+5 }}">Page&nbsp;+5 &nbsp;>&nbsp;</a>|
+    <a href="?page={{ page+10 }}">Page&nbsp;+10&nbsp;>>&nbsp;</a>|
+    <a href="?page={{ page+100 }}">Page&nbsp;+100&nbsp;>>&nbsp;</a>
+</p>
 {% endblock %}

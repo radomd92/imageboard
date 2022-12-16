@@ -107,7 +107,6 @@ class Image(JSONBuilder):
 
     @property
     def tags(self) -> list:
-        print(self.model.tags)
         if self.model.tags is not None:
             return [Tag(tag) for tag in self.model.tags]
         else:
