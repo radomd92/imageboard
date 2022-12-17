@@ -81,8 +81,7 @@ def image_link(link):
 
 @app.route('/explore_recursive/')
 @app.route('/explore_recursive/<link>')
-def explore_recursively(link='', depth=7):
-    """Fetches images from image server. Link must replace / with $."""
+def explore_recursively(link='', current_depth=0, max_depth=7):
 
     links = file_server.get_link_as_json(link.replace('$', '/'))
     for link_item in links:
@@ -91,18 +90,23 @@ def explore_recursively(link='', depth=7):
             link_item['link'] = link + '$' + link_item['name']
 
         link_item['text'] = link_item['name']
-        file_server.reference_image_depth(
+        already_existing_image = file_server.reference_image_depth(
             link_item['text'],
             link_item['link'],
-            depth,
+            current_depth,
             link_item.get('size', None)
         )
-        if depth > 0 and link_item['type'] == 'directory':
-            print('    ' * depth + "Recursive call")
+        link_item['image_db_data'] = None
+        if already_existing_image is not None:
+            link_item['image_db_data'] = ImageSerializer(already_existing_image).serialize()
+
+        if max_depth > current_depth and link_item['type'] == 'directory':
+            print('  ' * current_depth + "Recursive call {")
             try:
-                return explore(link_item['link'], depth-1)
+                explore_recursively(link_item['link'], current_depth+1, max_depth)
             except Exception as exc:
                 print(exc)
+            print('  ' * current_depth + "}")
 
     return render_template(
         'explorer.html',
@@ -114,8 +118,6 @@ def explore_recursively(link='', depth=7):
 @app.route('/explore/')
 @app.route('/explore/<link>')
 def explore(link=''):
-    """Fetches images from image server. Link must replace / with $."""
-
     links = file_server.get_link_as_json(link.replace('$', '/'))
     for link_item in links:
         link_item['link'] = link_item['name']
@@ -141,7 +143,6 @@ def explore(link=''):
 
 @app.route('/thumbnail/<link>/<size>')
 def image_thumbnail(link, size):
-    """Fetches images from image server. Link must replace / with $."""
     if link.lower().split('.')[-1] in ['mpg', 'mp4', 'wmv', 'mov', 'avi']:
         link = link.replace('$', '/') + f"§vthumb"
     else:
