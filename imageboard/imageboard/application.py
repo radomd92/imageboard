@@ -54,16 +54,17 @@ def get_images_tags(tag_name=None, page=0):
 
 
 @app.route('/search', methods=['POST', 'GET'])
-def search():
-    search_term = request.form.get('term')
+def search(page=0):
+    search_term = request.args.get('term')
     image_list = []
     if search_term is not None:
-        image_list = image.get_search_results(search_term)
+        image_list = image.get_search_results(search_term, page)
 
     return render_template(
         'search.html',
         title='Search results',
         images=image_list,
+        page=page,
     )
 
 
@@ -213,6 +214,7 @@ def images(image_id=None):
     """Fetches an image by a given ID."""
     current_image = image.get_image_from_id(image_id)
     comments = image.load_comments(image_id)
+    image.register_hit(image_id)
     return render_template(
         'image.html',
         title='Image',

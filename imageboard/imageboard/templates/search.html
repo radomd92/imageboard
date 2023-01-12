@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="row">
-    <form action="/search" method="post">
+    <form action="/search" method="get">
         <input type="text" name="term"/>
         {{ csrf }}
         <input type="submit" value="Search"/>
@@ -23,5 +23,4 @@
             {% endfor %}
     </div>
 </div>
-
 {% endblock %}

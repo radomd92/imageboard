@@ -10,17 +10,18 @@
                 <img src="/image_link/{{ image.image_path }}" style="width:600px">
                 {% elif image.image_path.split('.')[-1].lower() in 'mpg mpeg mp4 m4v mov 3gp avi wmv' %}
                 <img src="/thumbnail/{{ image.image_path }}/large">
-                <br />(Video thumbnail)
+                <br/>(Video thumbnail)
                 {% endif %}
             </a>
-            <hr />
+            <hr/>
             <p>
-            {% for tag in image.tags %}
-            <a href="/tags/{{ tag.name }}">
-                <span class="label label-default" style="display: inline-block;">{{ tag.name }}</span>
-                {{ tag.images }}
-            </a>
-            {% endfor %}
+                {% for tag in image.tags %}
+                    {% if 'set:' in tag.name %}
+                <a href="/tags/{{ tag.name }}"><span class="label label-info">{{ tag.name }}</span></a>
+                    {% else %}
+                <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
+                    {% endif %}
+                {% endfor %}
             </p>
         </div>
     </div>
@@ -47,19 +48,18 @@
                         <li>
                             <div class="commentText">
                                 <p class="">{{ comment.text }}</p>
-                            <hr />
-                            <form action="/images/{{ image.image_id }}/comment" method="post">
-                            <div class="form-group">
-                                <input class="form-control" name="comment">
-                                <input type="hidden" name='reply_to' value="{{ comment.message_id }}"/>
-                            </div>
-                            <div class="form-group">
-                                <button class="btn btn-default">Reply</button>
-                            </div>
+                                <hr/>
+                                <form action="/images/{{ image.image_id }}/comment" method="post">
+                                    <div class="form-group">
+                                        <input class="form-control" name="comment">
+                                        <input type="hidden" name='reply_to' value="{{ comment.message_id }}"/>
+                                    </div>
+                                    <div class="form-group">
+                                        <button class="btn btn-default">Reply</button>
+                                    </div>
+                                </form>
                             </div>
                         </li>
-
-                        </form>
                         {% endfor %}
                     </ul>
                 </div>

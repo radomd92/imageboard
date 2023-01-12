@@ -27,7 +27,11 @@
             </p>
             <div class="img-thumbnail">Tags:&nbsp;
                 {% for tag in image_from_tag.image.tags %}
+                    {% if 'set:' in tag.name %}
+                <a href="/tags/{{ tag.name }}"><span class="label label-info">{{ tag.name }}</span></a>
+                    {% else %}
                 <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
+                    {% endif %}
                 {% endfor %}
             </div>
         </div>

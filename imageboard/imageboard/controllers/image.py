@@ -9,6 +9,11 @@ from sqlalchemy.sql import text
 from werkzeug.exceptions import NotFound
 
 
+class NoSuchImageException(NotFound):
+    def __init__(self, message, label='NO_IMAGE'):
+        super(NoSuchImageException, self).__init__(f'[{label}] ' + str(message))
+
+
 class TagController(BaseController):
     def get_tag_by_name(self, tagname):
         with self.app.app_context():
@@ -24,6 +29,8 @@ class TagController(BaseController):
 
 
 class ImageController(BaseController):
+
+    RESULTS_PER_PAGE = 30
 
     def add_comment(self, image_id, message_text, reply_to=None):
         with self.app.app_context():
@@ -43,59 +50,7 @@ class ImageController(BaseController):
             if db_image:
                 return ImageModel.from_db(db_image)
             else:
-                raise NotFound(f'[NO_IMAGE_0] No image with ID {image_id}')
-
-    def get_images_with_tag(self, tag_name, page=1):
-        images = []
-        sql = f"select tag_name, id from images_with_tag where tag_name = '{tag_name}' limit 25 offset {25*(page-1)};"
-        with self.app.app_context():
-            query = db.session.execute(sql)
-            for tag_name_, image_id in query:
-                last_image = self.get_image_from_id(image_id)
-                images.append({
-                    'tag_name': tag_name_,
-                    'image': ImageSerializer(last_image).serialize(),
-                })
-
-        return images
-
-    def get_used_tags(self, min_images=3):
-        tags = []
-        sql = f"select name, images, max from tag_with_last_imageid where max >= {min_images};"
-        with self.app.app_context():
-            query = db.session.execute(sql)
-            for tag_name_, images, last_image_id in query:
-                last_image = self.get_image_from_id(last_image_id)
-                if images >= min_images:
-                    tags.append({
-                        'tag_name': tag_name_,
-                        'last_image': ImageSerializer(last_image).serialize(),
-                        'images': images
-                    })
-
-            return tags
-
-    def get_tagged_images(self):
-        images = []
-
-        with self.app.app_context():
-            sql = "select " \
-                  "id, image_path, name, created_date, file_size, hits, uploader, rating, tags " \
-                  "from tagged_images " \
-                  "where tags is not NULL " \
-                  "order by created_date desc " \
-                  "limit 8;"
-
-            query = db.session.execute(sql)
-            for image_id, image_path, name, created_date, file_size, hits, uploader, rating, tags in query:
-                img_model = ImageModel(
-                    image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
-                    hits=hits, rating=rating, tags=tags
-                )
-                serializer = ImageSerializer(img_model)
-                images.append(serializer.serialize())
-
-        return images
+                raise NoSuchImageException(image_id)
 
     def get_image_needing_tags(self):
         images = []
@@ -119,13 +74,80 @@ class ImageController(BaseController):
 
         return images
 
+    def get_images_with_tag(self, tag_name, page=1):
+        images = []
+        sql = f"select tag_name, id from images_with_tag where tag_name = '{tag_name}'" \
+              f" limit {self.RESULTS_PER_PAGE} offset {self.RESULTS_PER_PAGE*(page-1)};"
+        with self.app.app_context():
+            query = db.session.execute(sql)
+            for tag_name_, image_id in query:
+                last_image = self.get_image_from_id(image_id)
+                images.append({
+                    'tag_name': tag_name_,
+                    'image': ImageSerializer(last_image).serialize(),
+                })
+
+        return images
+
+    def get_tagged_images(self):
+        images = []
+
+        with self.app.app_context():
+            sql = "select " \
+                  "id, image_path, name, created_date, file_size, hits, uploader, rating, tags " \
+                  "from tagged_images " \
+                  "where tags is not NULL " \
+                  "order by created_date desc " \
+                  "limit 8;"
+
+            query = db.session.execute(sql)
+            for image_id, image_path, name, created_date, file_size, hits, uploader, rating, tags in query:
+                img_model = ImageModel(
+                    image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
+                    hits=hits, rating=rating, tags=tags
+                )
+                serializer = ImageSerializer(img_model)
+                images.append(serializer.serialize())
+
+        return images
+
+    def get_used_tags(self, min_images=3):
+        tags = []
+        sql = f"select name, images, max from tag_with_last_imageid where max >= {min_images};"
+        with self.app.app_context():
+            query = db.session.execute(sql)
+            for tag_name_, images, last_image_id in query:
+                last_image = self.get_image_from_id(last_image_id)
+                if images >= min_images:
+                    tags.append({
+                        'tag_name': tag_name_,
+                        'last_image': ImageSerializer(last_image).serialize(),
+                        'images': images
+                    })
+
+            return tags
+
+    def register_hit(self, image_id):
+        with self.app.app_context():
+            image_table_data = db.session.query(Image).filter_by(id=image_id).first()
+            if image_table_data is not None:
+                if image_table_data.hits is None:
+                    image_table_data.hits = 1
+                else:
+                    image_table_data.hits += 1
+
+                db.session.commit()
+            else:
+                db.session.rollback()
+                raise NoSuchImageException(image_id)
+
     def set_image_title(self, image_id, title):
         with self.app.app_context():
             db_image = db.session.query(Image).filter(Image.id == image_id).first()
             if db_image:
                 return ImageModel.from_db(db_image)
             else:
-                raise NotFound(f'[NO_IMAGE_1] No image with ID {image_id}')
+                raise NoSuchImageException(f'[ERR_SET_IMAGE_TITLE_NO_IMAGE] No image with ID {image_id}')
 
     def set_image_tags(self, image_id, tags: list):
         tag_controller = TagController(self.app)
@@ -148,18 +170,23 @@ class ImageController(BaseController):
 
             db.session.commit()
 
-    def get_search_results(self, term):
+    def get_search_results(self, term, page=1):
         images = []
+        term = term.lower()
 
         with self.app.app_context():
             sql = text("select " +
                        "id, image_path, name, created_date, file_size, hits, uploader, rating " +
                        "from tagged_images " +
-                       "where name like :term or image_path like :term " +
+                       "where lower(name) like :term or lower(image_path) like :term " +
                        "order by created_date desc " +
-                       "limit 50;")
-
-            query = db.session.execute(sql, {'term': '%' + term + '%'})
+                       f"limit :results_per_page offset :offset;")
+            query = db.session.execute(sql, {
+                'term': '%' + term + '%',
+                'results_per_page': self.RESULTS_PER_PAGE,
+                'offset': max(0, self.RESULTS_PER_PAGE*(page-1)),
+            })
+            print(query.cursor.query)
             for image_id, image_path, name, created_date, file_size, hits, uploader, rating in query:
                 img_model = ImageModel(
                     image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
