@@ -1,4 +1,5 @@
-from ..database import Image, Tag, TagImage, Message
+from redis import Redis
+from ..database import Image, Tag, TagImage, Message, ImageHit
 from ..model.image import Image as ImageModel, Tag as TagModel
 from ..model.social import Message as MessageModel
 from ..serializers.image import Image as ImageSerializer
@@ -129,6 +130,8 @@ class ImageController(BaseController):
 
     def register_hit(self, image_id):
         with self.app.app_context():
+            hit = ImageHit(image_id=image_id, user_id=None)
+            db.session.add(hit)
             image_table_data = db.session.query(Image).filter_by(id=image_id).first()
             if image_table_data is not None:
                 if image_table_data.hits is None:

@@ -1,3 +1,5 @@
+from _sha256 import sha256
+from pickle import loads, dumps
 import json
 import requests
 from werkzeug.exceptions import ServiceUnavailable, BadRequest
@@ -5,28 +7,42 @@ from .. import db
 from ..database import Image
 from ..model.image import Image as ImageModel
 
+from redis import Redis
+
 
 class FileServerController(object):
     def __init__(self, app=None):
         self.app = app
+        self.redis = Redis()
 
     def get_image(self, link):
         return self.get_links(link)
 
     def get_links(self, link, must_be_image=False):
         """Fetches images from image server. Link must replace / with $."""
-        link = link.replace('$', '/')
 
+        link_hash = sha256(link.encode('utf-8')).hexdigest()
+        cached_data = self.redis.get(link_hash)
+        content_type = self.redis.get(link_hash + '_content_type')
+        if cached_data:
+            return loads(cached_data), str(content_type, 'utf8')
+
+        link = link.replace('$', '/')
         req = requests.get(f"{self.app.config.get('FILE_SERVER')}/{link}", stream=True, verify=False)
         if req.status_code != 200:
             raise ServiceUnavailable(f"Backend file server returned HTTP {req.status_code}")
 
+        data = req.raw.read()
         content_type = req.headers.get('Content-Type').split('/')[0].strip()
         if must_be_image and content_type != 'image':
             raise BadRequest(f"[BAD_FILE_1] Returned data was not an image: Content-Type is '{content_type}'"
                              f" but 'image/*' was expected.")
 
-        return req.raw.read(), req.headers.get("Content-Type", 'image/jpeg')
+        content_type = req.headers.get("Content-Type", 'image/jpeg')
+        self.redis.set(link_hash, dumps(data))
+        self.redis.set(link_hash + '_content_type', content_type)
+
+        return data, content_type
 
     def get_link_as_json(self, link, must_be_image=False):
         link = link.replace('$', '/')
