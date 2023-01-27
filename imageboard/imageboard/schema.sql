@@ -16,6 +16,20 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+--
+-- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner:
+--
+
+COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -37,6 +51,20 @@ CREATE TABLE public.image (
 
 
 ALTER TABLE public.image OWNER TO peter;
+
+--
+-- Name: image_hits; Type: TABLE; Schema: public; Owner: peter
+--
+
+CREATE TABLE public.image_hits (
+    hit_id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    image_id integer,
+    user_id integer,
+    hit_date timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.image_hits OWNER TO peter;
 
 --
 -- Name: image_id_seq; Type: SEQUENCE; Schema: public; Owner: peter
@@ -215,6 +243,28 @@ ALTER SEQUENCE public.message_id_seq OWNED BY public.message.id;
 
 
 --
+-- Name: most_visited_tags; Type: VIEW; Schema: public; Owner: peter
+--
+
+CREATE VIEW public.most_visited_tags AS
+ SELECT
+ tag.name AS tag,
+    count(*) AS visits,
+    max(image_hits.hit_date) AS last_visited,
+    (select image_path from image where image.id = min(tag_image.image)) as most_viewed_image_path,
+    (select id from image where image.id = min(tag_image.image)) as most_viewed_image_id
+   FROM (((public.image
+     JOIN public.image_hits ON ((image_hits.image_id = image.id)))
+     JOIN public.tag_image ON ((tag_image.image = image.id)))
+     JOIN public.tag ON ((tag.id = tag_image.tag)))
+  WHERE (image_hits.hit_date > (CURRENT_DATE - '30 days'::interval day))
+  GROUP BY tag.name
+  ORDER BY (count(*)) DESC;
+
+
+ALTER TABLE public.most_visited_tags OWNER TO peter;
+
+--
 -- Name: ratings_id_seq; Type: SEQUENCE; Schema: public; Owner: peter
 --
 
@@ -379,6 +429,14 @@ ALTER TABLE ONLY public."user" ALTER COLUMN id SET DEFAULT nextval('public.user_
 
 
 --
+-- Name: image_hits image_hits_pkey; Type: CONSTRAINT; Schema: public; Owner: peter
+--
+
+ALTER TABLE ONLY public.image_hits
+    ADD CONSTRAINT image_hits_pkey PRIMARY KEY (hit_id);
+
+
+--
 -- Name: image image_image_path_key; Type: CONSTRAINT; Schema: public; Owner: peter
 --
 
@@ -469,6 +527,14 @@ CREATE INDEX image_name_idx ON public.image USING btree (name);
 --
 
 CREATE INDEX tag_image_image_idx ON public.tag_image USING hash (image);
+
+
+--
+-- Name: image_hits image_hits_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: peter
+--
+
+ALTER TABLE ONLY public.image_hits
+    ADD CONSTRAINT image_hits_user_id_fkey FOREIGN KEY (user_id) REFERENCES public."user"(id);
 
 
 --

@@ -1,4 +1,5 @@
 from . import JSONBuilder
+from . import serialize_date
 from ..model.social import Message as MessageModel
 from ..model.social import User as UserModel
 
@@ -24,7 +25,7 @@ class User(JSONBuilder):
 
     @property
     def registered(self):
-        return self.model.registered.strftime("%Y-%m-%d %H:%M:%S")
+        return serialize_date(self.model.registered)
 
     @property
     def karma(self):
