@@ -11,7 +11,8 @@
         {% for tag in used_tags %}
         <div class="imagecontainer img-thumbnail">
             <div class="caption">
-                <p><span class="imagename"><a href="tags/{{ tag.tag_name }}">{{ tag.tag_name }}</a>  ({{ tag.images }}) </span></p>
+                <p><span class="imagename"><a href="tags/{{ tag.tag_name }}">{{ tag.tag_name }}</a>  ({{ tag.images }}) </span>
+                </p>
             </div>
         </div>
         {% endfor %}
@@ -37,7 +38,26 @@
         {% endfor %}
     </div>
 
-</div>
-</div>
+    <div class="col-md-4">
+        <h2><a href="/explore">Monthly visited</a></h2>
+        <p>This month's most visited tagged images</p>
+        {% for tag in most_viewed_tags_monthly %}
+        <div class="imagecontainer img-thumbnail">
+            <a href="image_link/{{ tag.most_viewed_image_path }}">
+                <img src="/thumbnail/{{ tag.most_viewed_image_path }}/small">
+            </a>
+            <div class="caption">
+                <p><span class="imagename"><a href="/tags/{{ tag.tag }}">{{ tag.tag }}</a></span></p>
+                <p>
+                        <span class="filesize">
+                            ({{ tag.visits }} views)
+                        </span>
+                </p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
 
+</div>
+</div>
 {% endblock %}

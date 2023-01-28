@@ -62,3 +62,7 @@ class JSONBuilder(Builder):
                 raise JSONBuilderError("'%s' is not a serialisable element" % attribute_value.__class__)
 
         return main_node
+
+
+def serialize_date(date):
+    return date.strftime("%Y-%m-%d %H:%M:%S")

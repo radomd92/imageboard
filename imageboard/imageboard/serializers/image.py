@@ -1,4 +1,5 @@
 from . import JSONBuilder
+from . import serialize_date
 from ..model.image import Image as ImageModel, Tag as TagModel
 
 
@@ -93,7 +94,7 @@ class Image(JSONBuilder):
     @property
     def created_date(self) -> str:
         if self.model.created_date is not None:
-            return self.model.created_date.strftime("%Y-%m-%d %H:%M:%S")
+            return serialize_date(self.model.created_date)
         else:
             return ""
 

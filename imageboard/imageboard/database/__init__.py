@@ -1,5 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
+from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import UUID
 
 # create the extension
 db = SQLAlchemy()
@@ -61,6 +63,15 @@ class Image(db.Model):
     @property
     def comments(self):
         return []
+
+
+class ImageHit(db.Model):
+    __tablename__ = 'image_hits'
+
+    hit_id = db.Column(UUID, primary_key=True, server_default=text("uuid_generate_v4()"))
+    image_id = db.Column(db.Integer, primary_key=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    hit_date = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
 
 class User(db.Model):

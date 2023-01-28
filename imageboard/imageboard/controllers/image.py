@@ -1,17 +1,22 @@
-from ..database import Image, Tag, TagImage, Message
-from ..model.image import Image as ImageModel, Tag as TagModel
-from ..model.social import Message as MessageModel
-from ..serializers.image import Image as ImageSerializer
 from .. import db
+from ..database import Image, Tag, TagImage, Message, ImageHit
+from ..model.image import Image as ImageModel, Tag as TagModel
+from ..serializers import serialize_date
+from ..serializers.image import Image as ImageSerializer
 from ..controllers import BaseController
 from ..controllers.social import Message as MessageController
 from sqlalchemy.sql import text
-from werkzeug.exceptions import NotFound
+from werkzeug.exceptions import NotFound, BadRequest
 
 
 class NoSuchImageException(NotFound):
     def __init__(self, message, label='NO_IMAGE'):
         super(NoSuchImageException, self).__init__(f'[{label}] ' + str(message))
+
+
+class PageSaveError(BadRequest):
+    def __init__(self, message, label='PAGE_SAVE_ERROR'):
+        super(PageSaveError, self).__init__(f'[{label}] ' + str(message))
 
 
 class TagController(BaseController):
@@ -26,6 +31,25 @@ class TagController(BaseController):
         with self.app.app_context():
             db_tag = db.session.query(Tag).filter(Tag.name == tagname).first()
             return TagModel.from_db(db_tag)
+
+    def get_monthly_viewed(self):
+        monthly_viewed = []
+        with self.app.app_context():
+            sql = " select tag, visits, last_visited, most_viewed_image_id, most_viewed_image_path" \
+                  " from most_visited_tags " \
+                  " where visits > 2" \
+                  " order by visits desc" \
+                  " limit 25;"
+            query = db.session.execute(sql)
+            for tag, visits, last_visited, most_viewed_image_id, most_viewed_image_path in query:
+                monthly_viewed.append({
+                    'tag': tag,
+                    'visits': visits,
+                    'last_visited': serialize_date(last_visited),
+                    'most_viewed_image_id': most_viewed_image_id,
+                    'most_viewed_image_path': most_viewed_image_path
+                })
+        return monthly_viewed
 
 
 class ImageController(BaseController):
@@ -52,7 +76,7 @@ class ImageController(BaseController):
             else:
                 raise NoSuchImageException(image_id)
 
-    def get_image_needing_tags(self):
+    def get_image_needing_tags(self, limit=8):
         images = []
 
         with self.app.app_context():
@@ -61,7 +85,7 @@ class ImageController(BaseController):
                   "from tagged_images " \
                   "where tags is NULL " \
                   "order by created_date desc " \
-                  "limit 8;"
+                  f"limit {limit};"
 
             query = db.session.execute(sql)
             for image_id, image_path, name, created_date, file_size, hits, uploader, rating in query:
@@ -129,6 +153,8 @@ class ImageController(BaseController):
 
     def register_hit(self, image_id):
         with self.app.app_context():
+            hit = ImageHit(image_id=image_id, user_id=None)
+            db.session.add(hit)
             image_table_data = db.session.query(Image).filter_by(id=image_id).first()
             if image_table_data is not None:
                 if image_table_data.hits is None:
@@ -142,10 +168,18 @@ class ImageController(BaseController):
                 raise NoSuchImageException(image_id)
 
     def set_image_title(self, image_id, title):
+        if not title:
+            return
         with self.app.app_context():
             db_image = db.session.query(Image).filter(Image.id == image_id).first()
             if db_image:
-                return ImageModel.from_db(db_image)
+                try:
+                    db_image.name = title
+                    db.session.commit()
+                except Exception as unknown_error:
+                    db.session.rollback()
+                    err_msg = f'[ERR_SET_IMAGE_TITLE_DB_SAVE_ERROR] Could not set an image title: {unknown_error}'
+                    raise PageSaveError(err_msg) from unknown_error
             else:
                 raise NoSuchImageException(f'[ERR_SET_IMAGE_TITLE_NO_IMAGE] No image with ID {image_id}')
 
