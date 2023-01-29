@@ -2,6 +2,7 @@ from _sha256 import sha256
 import json
 import os
 from pickle import dumps, loads
+from random import randbytes
 from redis import Redis
 import rsa
 from Crypto.Cipher import AES
@@ -56,8 +57,7 @@ class EncryptedFilesystemCache(object):
 
     @property
     def aes_key(self):
-
-        return b'\xa1\xb9\xd7"\xb3t=\xf3az\x18\xeb\xad=K\xd9a*N\x1e\xb3\x10f\xf7@\x90,\xc7\xbf\xe3\xe9\xc3'
+        return randbytes(32)
 
     def load_keypair(self):
         if os.path.exists(f'{self.keys_folder}/rsa.key'):
@@ -117,7 +117,8 @@ class EncryptedFilesystemCache(object):
                     rsa_encrypted_aes_key = loads(file.read())
                 decrypted_key = rsa.decrypt(rsa_encrypted_aes_key, self.private_key)
                 aes = AES.new(decrypted_key)
-                return aes.decrypt(aes_encrypted_data)[:data_length], str(aes.decrypt(content_type)[:content_type_length])
+                return aes.decrypt(aes_encrypted_data)[:data_length], \
+                    str(aes.decrypt(content_type)[:content_type_length])
                 # ^ trimming data per reason [1] given above
 
         except FileNotFoundError:

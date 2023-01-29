@@ -36,7 +36,7 @@ def edit_image_title(image_id=None):
     current_image = image.set_image_title(image_id, title)
     return render_template(
         'redirect.html',
-        redirect_to="/" + str(current_image.image_id),
+        redirect_to="/images/" + str(current_image.image_id),
         title=current_image.name,
         message="Title edit successful. You'll be redirected shortly...",
     )
@@ -49,7 +49,7 @@ def add_user_comment(image_id=None):
     current_image = image.add_comment(image_id, text, reply_to)
     return render_template(
         'redirect.html',
-        redirect_to="/" + str(current_image.image_id),
+        redirect_to="/images/" + str(current_image.image_id),
         title=current_image.name,
         message="Title edit successful. You'll be redirected shortly...",
     )
@@ -64,7 +64,7 @@ def edit_image_tag(image_id=None):
     image.set_image_tags(image_id, tags)
     return render_template(
         'redirect.html',
-        redirect_to="/" + str(current_image.image_id),
+        redirect_to="/images/" + str(current_image.image_id),
         title=current_image.name,
         message="Tag edit successful. You'll be redirected shortly...",
     )
