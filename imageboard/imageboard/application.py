@@ -76,6 +76,7 @@ def search(page=0):
 def image_link(link):
     """Fetches images from image server. Link must replace / with $."""
     data, mimetype = file_server.get_image(link)
+    image.register_hit(image.get_image_from_link(link).image_id)
     return send_file(
         io.BytesIO(data),
         mimetype=mimetype,

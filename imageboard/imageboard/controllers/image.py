@@ -6,17 +6,8 @@ from ..serializers.image import Image as ImageSerializer
 from ..controllers import BaseController
 from ..controllers.social import Message as MessageController
 from sqlalchemy.sql import text
-from werkzeug.exceptions import NotFound, BadRequest
 
-
-class NoSuchImageException(NotFound):
-    def __init__(self, message, label='NO_IMAGE'):
-        super(NoSuchImageException, self).__init__(f'[{label}] ' + str(message))
-
-
-class PageSaveError(BadRequest):
-    def __init__(self, message, label='PAGE_SAVE_ERROR'):
-        super(PageSaveError, self).__init__(f'[{label}] ' + str(message))
+from .exceptions import NoSuchImageException, PageSaveError
 
 
 class TagController(BaseController):
@@ -68,13 +59,21 @@ class ImageController(BaseController):
             messages = db.session.query(Message).filter(Message.image == image_id)
             return [MessageController(self.app).get_from_id(message.id) for message in messages]
 
-    def get_image_from_id(self, image_id):
+    def get_image_from_id(self, image_id) -> ImageModel:
         with self.app.app_context():
             db_image = db.session.query(Image).filter(Image.id == image_id).first()
             if db_image:
                 return ImageModel.from_db(db_image)
             else:
                 raise NoSuchImageException(image_id)
+
+    def get_image_from_link(self, link) -> ImageModel:
+        with self.app.app_context():
+            db_image = db.session.query(Image).filter(Image.image_path == link).first()
+            if db_image:
+                return ImageModel.from_db(db_image)
+            else:
+                raise NoSuchImageException(link)
 
     def get_image_needing_tags(self, limit=8):
         images = []
