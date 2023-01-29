@@ -37,6 +37,7 @@ http {
         location /imagefolder/ {
             # Autoindex only shows when nginx can't file its own index files
 
+            # VERY important
             autoindex on;
             autoindex_format json;
 
