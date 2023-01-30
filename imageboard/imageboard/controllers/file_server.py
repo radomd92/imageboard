@@ -61,16 +61,19 @@ class EncryptedFilesystemCache(object):
 
     def load_keypair(self):
         if os.path.exists(f'{self.keys_folder}/rsa.key'):
-            with open(f'{self.keys_folder}/rsa.key', 'rb') as private_key:
-                self.private_key = rsa.PrivateKey.load_pkcs1(private_key.read())
-            with open(f'{self.keys_folder}/rsa_pub.key', 'rb') as public_key:
-                self.public_key = rsa.PublicKey.load_pkcs1(public_key.read())
+            self._load_keypair()
         else:
             try:
                 print(f"Generating {self.key_size_bits}-bit key pair for local cache storage...")
                 self._generate_rsa_keypair_if_not_exists()
             except Exception as unknown_error:
                 raise CacheError(f"Failed to load keypair: {unknown_error}") from unknown_error
+
+    def _load_keypair(self):
+        with open(f'{self.keys_folder}/rsa.key', 'rb') as private_key:
+            self.private_key = rsa.PrivateKey.load_pkcs1(private_key.read())
+        with open(f'{self.keys_folder}/rsa_pub.key', 'rb') as public_key:
+            self.public_key = rsa.PublicKey.load_pkcs1(public_key.read())
 
     def _generate_rsa_keypair_if_not_exists(self):
         if not os.path.exists(self.keys_folder):
@@ -83,6 +86,8 @@ class EncryptedFilesystemCache(object):
                 private_key_file.write(private_key_as_bytes)
             with open(f'{self.keys_folder}/rsa_pub.key', 'wb') as public_key_file:
                 public_key_file.write(public_key_as_bytes)
+
+            self._load_keypair()
 
     def add_data(self, link, data, content_type, raise_on_ioerror=False):
         aes_key = self.aes_key
