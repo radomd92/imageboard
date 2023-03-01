@@ -95,3 +95,29 @@ class Message(db.Model):
     text = db.Column(db.String(500))
     reply_to = db.Column(db.Integer, db.ForeignKey('message.id'))
     message_date = db.Column(db.DateTime(timezone=True))
+
+    _replies = []
+    _function_was_called = False
+
+    @classmethod
+    def get_by_id(self, id_: int) -> 'Message':
+        data = db.session.query(Message).filter(Message.id == id_).one()
+        data.fetch_replies()
+        return data
+
+    def fetch_replies(self):
+        self._function_was_called = True
+        db_replies = db.session.query(Message).filter(Message.reply_to == self.id).all()
+        if not db_replies:
+            self._replies = []
+        else:
+            for reply in db_replies:
+                reply.fetch_replies()
+
+            self._replies = db_replies
+
+    @property
+    def replies(self):
+        if not self._function_was_called:
+            self.fetch_replies()
+        return self._replies

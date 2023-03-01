@@ -1,10 +1,10 @@
 from .. import db
 from ..database import Image, Tag, TagImage, Message, ImageHit
 from ..model.image import Image as ImageModel, Tag as TagModel
+from ..model.social import Message as MessageModel
 from ..serializers import serialize_date
 from ..serializers.image import Image as ImageSerializer
 from ..controllers import BaseController
-from ..controllers.social import Message as MessageController
 from sqlalchemy.sql import text
 
 from .exceptions import NoSuchImageException, PageSaveError
@@ -56,8 +56,10 @@ class ImageController(BaseController):
 
     def load_comments(self, image_id):
         with self.app.app_context():
-            messages = db.session.query(Message).filter(Message.image == image_id)
-            return [MessageController(self.app).get_from_id(message.id) for message in messages]
+            messages_db = db.session.query(Message).filter(Message.image == image_id).filter(Message.reply_to == None)
+            messages = [MessageModel.from_db(message) for message in messages_db]
+            print(messages)
+            return messages
 
     def get_image_from_id(self, image_id) -> ImageModel:
         with self.app.app_context():

@@ -16,11 +16,11 @@
             <hr/>
             <p>
                 {% for tag in image.tags %}
-                    {% if 'set:' in tag.name %}
+                {% if 'set:' in tag.name %}
                 <a href="/tags/{{ tag.name }}"><span class="label label-info">{{ tag.name }}</span></a>
-                    {% else %}
+                {% else %}
                 <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
-                    {% endif %}
+                {% endif %}
                 {% endfor %}
             </p>
         </div>
@@ -43,23 +43,21 @@
                 </div>
                 <div class="commentBox">
                     <ul class="commentList">
-                        {% for comment in comments %}
+                        {% for comment in comments recursive %}
                         Anonymous (<span class="date sub-text">{{ comment.message_date }}</span>)
-                        <li>
+                        <div style="margin-left:25px;">
                             <div class="commentText">
                                 <p class="">{{ comment.text }}</p>
-                                <hr/>
                                 <form action="/images/{{ image.image_id }}/comment" method="post">
                                     <div class="form-group">
-                                        <input class="form-control" name="comment">
+                                        <input class="form-control" style="display: inline;" name="comment">
+                                        <button class="btn btn-default">Reply</button>
                                         <input type="hidden" name='reply_to' value="{{ comment.message_id }}"/>
                                     </div>
-                                    <div class="form-group">
-                                        <button class="btn btn-default">Reply</button>
-                                    </div>
                                 </form>
+                                {{ loop(comment.replies) }}
                             </div>
-                        </li>
+                        </div>
                         {% endfor %}
                     </ul>
                 </div>

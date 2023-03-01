@@ -51,7 +51,7 @@ class Message(JSONBuilder):
             ('message_id', 'message_id'),
             ('from_user', 'from_user'),
             ('text', 'text'),
-            ('reply_to', 'reply_to'),
+            ('replies', 'replies'),
             ('message_date', 'message_date'),
         ]
 
@@ -68,11 +68,14 @@ class Message(JSONBuilder):
         return self.model.text
 
     @property
-    def reply_to(self):
-        if self.model.reply_to is not None:
-            return Message(self.model.reply_to)
-        else:
-            return None
+    def replies(self):
+        replies = [Message(reply) for reply in self.model.replies]
+        return replies
+
+    def serialize(self) -> dict:
+        serialized = super(Message, self).serialize()
+        print(serialized)
+        return serialized
 
     @property
     def message_date(self):
