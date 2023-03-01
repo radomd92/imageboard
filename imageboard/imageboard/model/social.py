@@ -37,10 +37,19 @@ class Message(Model):
 
     @staticmethod
     def from_db(message_db):
-        return Message(
+        message = Message(
             from_user=message_db.from_user,
-            text=message_db.message,
+            text=message_db.text,
             message_id=message_db.id,
             message_date=message_db.message_date
         )
+        message.replies = [Message.from_db(rpl) for rpl in message_db.replies]
+        return message
 
+    def __repr__(self):
+        data = f"Message({self.message_id}, {self.text})" + " {"
+        for r in self.replies:
+            data += r.__repr__()
+
+        data += '}'
+        return data
