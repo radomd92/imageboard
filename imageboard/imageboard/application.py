@@ -29,7 +29,7 @@ def home():
     return render_template(
         'index.html',
         title='Main page',
-        images_needing_tags=image.get_image_needing_tags(),
+        images_needing_tags=[ImageSerializer(model) for model in image.get_image_needing_tags()],
         used_tags=image.get_used_tags(8),
         most_viewed_tags_monthly=tags.get_monthly_viewed(),
     )
@@ -67,7 +67,7 @@ def search(page=0):
     return render_template(
         'search.html',
         title='Search results',
-        images=image_list,
+        images=[ImageSerializer(model) for model in image_list],
         page=page,
     )
 

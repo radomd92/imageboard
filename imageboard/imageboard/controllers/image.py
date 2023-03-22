@@ -1,3 +1,5 @@
+from typing import Dict, List
+from datetime import datetime
 from .. import db
 from ..database import Image, Tag, TagImage, Message, ImageHit
 from ..model.image import Image as ImageModel, Tag as TagModel
@@ -11,19 +13,19 @@ from .exceptions import NoSuchImageException, PageSaveError
 
 
 class TagController(BaseController):
-    def get_tag_by_name(self, tagname):
+    def get_tag_by_name(self, tag_name) -> TagModel:
         with self.app.app_context():
-            db_tag = db.session.query(Tag.id).filter(Tag.name == tagname).first()
+            db_tag = db.session.query(Tag.id).filter(Tag.name == tag_name).first()
             if not db_tag:
-                new_tag = Tag(name=tagname)
+                new_tag = Tag(name=tag_name)
                 db.session.add(new_tag)
                 db.session.commit()
 
         with self.app.app_context():
-            db_tag = db.session.query(Tag).filter(Tag.name == tagname).first()
+            db_tag = db.session.query(Tag).filter(Tag.name == tag_name).first()
             return TagModel.from_db(db_tag)
 
-    def get_monthly_viewed(self):
+    def get_monthly_viewed(self) -> List[Dict]:
         monthly_viewed = []
         with self.app.app_context():
             sql = " select tag, visits, last_visited, most_viewed_image_id, most_viewed_image_path" \
@@ -49,12 +51,12 @@ class ImageController(BaseController):
 
     def add_comment(self, image_id, message_text, reply_to=None):
         with self.app.app_context():
-            message = Message(image=image_id, text=message_text, reply_to=reply_to)
+            message = Message(image=image_id, text=message_text, reply_to=reply_to, message_date=datetime.now())
             db.session.add(message)
             db.session.commit()
             return self.get_image_from_id(image_id)
 
-    def load_comments(self, image_id):
+    def load_comments(self, image_id) -> List[MessageModel]:
         with self.app.app_context():
             messages_db = db.session.query(Message).filter(Message.image == image_id).filter(Message.reply_to == None)
             messages = [MessageModel.from_db(message) for message in messages_db]
@@ -76,7 +78,7 @@ class ImageController(BaseController):
             else:
                 raise NoSuchImageException(link)
 
-    def get_image_needing_tags(self, limit=8):
+    def get_image_needing_tags(self, limit=8) -> List[ImageModel]:
         images = []
 
         with self.app.app_context():
@@ -93,8 +95,7 @@ class ImageController(BaseController):
                     image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
                     hits=hits, rating=rating, tags=[]
                 )
-                serializer = ImageSerializer(img_model)
-                images.append(serializer.serialize())
+                images.append(img_model)
 
         return images
 
@@ -113,7 +114,7 @@ class ImageController(BaseController):
 
         return images
 
-    def get_tagged_images(self):
+    def get_tagged_images(self) -> List[ImageModel]:
         images = []
 
         with self.app.app_context():
@@ -130,12 +131,11 @@ class ImageController(BaseController):
                     image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
                     hits=hits, rating=rating, tags=tags
                 )
-                serializer = ImageSerializer(img_model)
-                images.append(serializer.serialize())
+                images.append(img_model)
 
         return images
 
-    def get_used_tags(self, min_images=3):
+    def get_used_tags(self, min_images=3) -> List[Dict]:
         tags = []
         sql = f"select name, images, max from tag_with_last_imageid where max >= {min_images};"
         with self.app.app_context():
@@ -204,7 +204,7 @@ class ImageController(BaseController):
 
             db.session.commit()
 
-    def get_search_results(self, term, page=1):
+    def get_search_results(self, term, page=1) -> List[ImageModel]:
         images = []
         term = term.lower()
 
@@ -226,7 +226,6 @@ class ImageController(BaseController):
                     image_id=image_id, name=name, image_path=image_path, uploader=uploader, file_size=file_size,
                     hits=hits, rating=rating, tags=[]
                 )
-                serializer = ImageSerializer(img_model)
-                images.append(serializer.serialize())
+                images.append(img_model)
 
         return images
