@@ -72,6 +72,7 @@ class ImageHit(db.Model):
     image_id = db.Column(db.Integer, primary_key=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     hit_date = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    type = db.Column(db.String(16))
 
 
 class User(db.Model):

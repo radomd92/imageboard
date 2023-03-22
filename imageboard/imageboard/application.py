@@ -149,12 +149,15 @@ def explore(link=''):
 
 @app.route('/thumbnail/<link>/<size>')
 def image_thumbnail(link, size):
+    image.register_hit(image.get_image_from_link(link).image_id, view_type='thumbnail')
+
     if link.lower().split('.')[-1] in ['mpg', 'mp4', 'wmv', 'mov', 'avi']:
         link = link.replace('$', '/') + f"§vthumb"
     else:
         link = link.replace('$', '/') + f"§thumb§{size}"
 
     data, mimetype = file_server.get_links(link)
+
     return send_file(
         io.BytesIO(data),
         mimetype=mimetype,

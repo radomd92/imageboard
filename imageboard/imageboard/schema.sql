@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 12.12 (Ubuntu 12.12-0ubuntu0.20.04.1)
--- Dumped by pg_dump version 12.12 (Ubuntu 12.12-0ubuntu0.20.04.1)
+-- Dumped from database version 12.14 (Ubuntu 12.14-0ubuntu0.20.04.1)
+-- Dumped by pg_dump version 12.14 (Ubuntu 12.14-0ubuntu0.20.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -24,7 +24,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 
 
 --
--- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner:
+-- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner: 
 --
 
 COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
@@ -60,7 +60,8 @@ CREATE TABLE public.image_hits (
     hit_id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     image_id integer,
     user_id integer,
-    hit_date timestamp with time zone DEFAULT now()
+    hit_date timestamp with time zone DEFAULT now(),
+    type character varying(16)
 );
 
 
@@ -247,12 +248,15 @@ ALTER SEQUENCE public.message_id_seq OWNED BY public.message.id;
 --
 
 CREATE VIEW public.most_visited_tags AS
- SELECT
- tag.name AS tag,
+ SELECT tag.name AS tag,
     count(*) AS visits,
     max(image_hits.hit_date) AS last_visited,
-    (select image_path from image where image.id = min(tag_image.image)) as most_viewed_image_path,
-    (select id from image where image.id = min(tag_image.image)) as most_viewed_image_id
+    ( SELECT image_1.image_path
+           FROM public.image image_1
+          WHERE (image_1.id = min(tag_image.image))) AS most_viewed_image_path,
+    ( SELECT image_1.id
+           FROM public.image image_1
+          WHERE (image_1.id = min(tag_image.image))) AS most_viewed_image_id
    FROM (((public.image
      JOIN public.image_hits ON ((image_hits.image_id = image.id)))
      JOIN public.tag_image ON ((tag_image.image = image.id)))

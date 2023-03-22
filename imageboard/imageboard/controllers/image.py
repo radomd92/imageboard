@@ -81,10 +81,10 @@ class ImageController(BaseController):
 
         with self.app.app_context():
             sql = "select " \
-                  "id, image_path, name, created_date, file_size, hits, uploader, rating " \
-                  "from tagged_images " \
-                  "where tags is NULL " \
-                  "order by created_date desc " \
+                  " id, image_path, name, created_date, file_size, hits, uploader, rating " \
+                  " from tagged_images " \
+                  " where tags is NULL " \
+                  " order by created_date desc " \
                   f"limit {limit};"
 
             query = db.session.execute(sql)
@@ -118,11 +118,11 @@ class ImageController(BaseController):
 
         with self.app.app_context():
             sql = "select " \
-                  "id, image_path, name, created_date, file_size, hits, uploader, rating, tags " \
-                  "from tagged_images " \
-                  "where tags is not NULL " \
-                  "order by created_date desc " \
-                  "limit 8;"
+                  " id, image_path, name, created_date, file_size, hits, uploader, rating, tags" \
+                  " from tagged_images" \
+                  " where tags is not NULL" \
+                  " order by created_date desc" \
+                  " limit 8;"
 
             query = db.session.execute(sql)
             for image_id, image_path, name, created_date, file_size, hits, uploader, rating, tags in query:
@@ -151,9 +151,9 @@ class ImageController(BaseController):
 
             return tags
 
-    def register_hit(self, image_id):
+    def register_hit(self, image_id, view_type='image'):
         with self.app.app_context():
-            hit = ImageHit(image_id=image_id, user_id=None)
+            hit = ImageHit(image_id=image_id, user_id=None, type=view_type)
             db.session.add(hit)
             image_table_data = db.session.query(Image).filter_by(id=image_id).first()
             if image_table_data is not None:
@@ -210,10 +210,10 @@ class ImageController(BaseController):
 
         with self.app.app_context():
             sql = text("select " +
-                       "id, image_path, name, created_date, file_size, hits, uploader, rating " +
-                       "from tagged_images " +
-                       "where lower(name) like :term or lower(image_path) like :term " +
-                       "order by created_date desc " +
+                       " id, image_path, name, created_date, file_size, hits, uploader, rating " +
+                       " from tagged_images " +
+                       " where lower(name) like :term or lower(image_path) like :term " +
+                       " order by created_date desc " +
                        f"limit :results_per_page offset :offset;")
             query = db.session.execute(sql, {
                 'term': '%' + term + '%',

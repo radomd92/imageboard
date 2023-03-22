@@ -50,7 +50,7 @@
                                 <p class="">{{ comment.text }}</p>
                                 <form action="/images/{{ image.image_id }}/comment" method="post">
                                     <div class="form-group">
-                                        <input class="form-control" style="display: inline;" name="comment">
+                                        <input class="form-control" style="display: inline;" name="comment" />
                                         <button class="btn btn-default">Reply</button>
                                         <input type="hidden" name='reply_to' value="{{ comment.message_id }}"/>
                                     </div>
