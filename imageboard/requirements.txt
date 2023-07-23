@@ -5,3 +5,6 @@ requests
 Flask-SQLAlchemy
 Flask-login
 gunicorn
+gevent
+gevent-ws
+redis
