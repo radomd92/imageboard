@@ -52,5 +52,7 @@ PostgreSQL is used as the default data storage engine. It does not store the ima
 rather the backend path of the images. Backend images and videos are discovered when the user 
 goes through the exploration page.
 
+To increase responsiveness, Redis and a filesystem cache are also used for the images. They are encrypted at rest on the filesystem using RSA (keys) and AES (data)
+
 # Feature list
 - Image tagging: associate tags with images.
