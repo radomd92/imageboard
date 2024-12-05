@@ -93,7 +93,7 @@ def explore_recursively(link='', current_depth=0, max_depth=7):
     for link_item in links:
         link_item['link'] = link_item['name']
         if link:
-            link_item['link'] = link + '$' + link_item['name']
+            link_item['link'] = f'{link}$' + link_item['name']
 
         link_item['text'] = link_item['name']
         already_existing_image = file_server.reference_image_depth(
@@ -128,7 +128,7 @@ def explore(link=''):
     for link_item in links:
         link_item['link'] = link_item['name']
         if link:
-            link_item['link'] = link + '$' + link_item['name']
+            link_item['link'] = f'{link}$' + link_item['name']
 
         link_item['text'] = link_item['name']
         already_existing_image = file_server.reference_image(
@@ -152,7 +152,7 @@ def image_thumbnail(link, size):
     image.register_hit(image.get_image_from_link(link).image_id, view_type='thumbnail')
 
     if link.lower().split('.')[-1] in ['mpg', 'mp4', 'wmv', 'mov', 'avi']:
-        link = link.replace('$', '/') + f"§vthumb"
+        link = link.replace('$', '/') + "§vthumb"
     else:
         link = link.replace('$', '/') + f"§thumb§{size}"
 

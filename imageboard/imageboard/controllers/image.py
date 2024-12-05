@@ -29,19 +29,21 @@ class TagController(BaseController):
         monthly_viewed = []
         with self.app.app_context():
             sql = " select tag, visits, last_visited, most_viewed_image_id, most_viewed_image_path" \
-                  " from most_visited_tags " \
-                  " where visits > 2" \
-                  " order by visits desc" \
-                  " limit 25;"
+                      " from most_visited_tags " \
+                      " where visits > 2" \
+                      " order by visits desc" \
+                      " limit 25;"
             query = db.session.execute(sql)
-            for tag, visits, last_visited, most_viewed_image_id, most_viewed_image_path in query:
-                monthly_viewed.append({
+            monthly_viewed.extend(
+                {
                     'tag': tag,
                     'visits': visits,
                     'last_visited': serialize_date(last_visited),
                     'most_viewed_image_id': most_viewed_image_id,
-                    'most_viewed_image_path': most_viewed_image_path
-                })
+                    'most_viewed_image_path': most_viewed_image_path,
+                }
+                for tag, visits, last_visited, most_viewed_image_id, most_viewed_image_path in query
+            )
         return monthly_viewed
 
 
@@ -58,22 +60,31 @@ class ImageController(BaseController):
 
     def load_comments(self, image_id) -> List[MessageModel]:
         with self.app.app_context():
-            messages_db = db.session.query(Message).filter(Message.image == image_id).filter(Message.reply_to == None)
-            messages = [MessageModel.from_db(message) for message in messages_db]
-            return messages
+            messages_db = (
+                db.session.query(Message)
+                .filter(Message.image == image_id)
+                .filter(Message.reply_to is None)
+            )
+            return [MessageModel.from_db(message) for message in messages_db]
 
     def get_image_from_id(self, image_id) -> ImageModel:
         with self.app.app_context():
-            db_image = db.session.query(Image).filter(Image.id == image_id).first()
-            if db_image:
+            if (
+                db_image := db.session.query(Image)
+                .filter(Image.id == image_id)
+                .first()
+            ):
                 return ImageModel.from_db(db_image)
             else:
                 raise NoSuchImageException(image_id)
 
     def get_image_from_link(self, link) -> ImageModel:
         with self.app.app_context():
-            db_image = db.session.query(Image).filter(Image.image_path == link).first()
-            if db_image:
+            if (
+                db_image := db.session.query(Image)
+                .filter(Image.image_path == link)
+                .first()
+            ):
                 return ImageModel.from_db(db_image)
             else:
                 raise NoSuchImageException(link)
@@ -171,33 +182,33 @@ class ImageController(BaseController):
         if not title:
             return
         with self.app.app_context():
-            db_image = db.session.query(Image).filter(Image.id == image_id).first()
-            if db_image:
-                try:
-                    db_image.name = title
-                    db.session.commit()
-                except Exception as unknown_error:
-                    db.session.rollback()
-                    err_msg = f'[ERR_SET_IMAGE_TITLE_DB_SAVE_ERROR] Could not set an image title: {unknown_error}'
-                    raise PageSaveError(err_msg) from unknown_error
-            else:
+            if not (
+                db_image := db.session.query(Image)
+                .filter(Image.id == image_id)
+                .first()
+            ):
                 raise NoSuchImageException(f'[ERR_SET_IMAGE_TITLE_NO_IMAGE] No image with ID {image_id}')
+            try:
+                db_image.name = title
+                db.session.commit()
+            except Exception as unknown_error:
+                db.session.rollback()
+                err_msg = f'[ERR_SET_IMAGE_TITLE_DB_SAVE_ERROR] Could not set an image title: {unknown_error}'
+                raise PageSaveError(err_msg) from unknown_error
 
     def set_image_tags(self, image_id, tags: list):
         tag_controller = TagController(self.app)
         tags_as_models = []
         with self.app.app_context():
-            for tag in tags:
-                tags_as_models.append(tag_controller.get_tag_by_name(tag))
-
+            tags_as_models.extend(tag_controller.get_tag_by_name(tag) for tag in tags)
             # Remove all tags
             db.session.query(TagImage).filter(TagImage.image == image_id).delete()
 
             # Add all tags
             for tag in tags_as_models:
                 db_tag_image = db.session.query(TagImage) \
-                    .filter(TagImage.image == image_id) \
-                    .filter(TagImage.tag == tag.tag_id).first()
+                        .filter(TagImage.image == image_id) \
+                        .filter(TagImage.tag == tag.tag_id).first()
                 if not db_tag_image:
                     new_tag_association = TagImage(tag=tag.tag_id, image=image_id)
                     db.session.add(new_tag_association)
@@ -209,17 +220,24 @@ class ImageController(BaseController):
         term = term.lower()
 
         with self.app.app_context():
-            sql = text("select " +
-                       " id, image_path, name, created_date, file_size, hits, uploader, rating " +
-                       " from tagged_images " +
-                       " where lower(name) like :term or lower(image_path) like :term " +
-                       " order by created_date desc " +
-                       f"limit :results_per_page offset :offset;")
-            query = db.session.execute(sql, {
-                'term': '%' + term + '%',
-                'results_per_page': self.RESULTS_PER_PAGE,
-                'offset': max(0, self.RESULTS_PER_PAGE*(page-1)),
-            })
+            sql = text(
+                (
+                    "select "
+                    + " id, image_path, name, created_date, file_size, hits, uploader, rating "
+                    + " from tagged_images "
+                    + " where lower(name) like :term or lower(image_path) like :term "
+                    + " order by created_date desc "
+                    + "limit :results_per_page offset :offset;"
+                )
+            )
+            query = db.session.execute(
+                sql,
+                {
+                    'term': f'%{term}%',
+                    'results_per_page': self.RESULTS_PER_PAGE,
+                    'offset': max(0, self.RESULTS_PER_PAGE * (page - 1)),
+                },
+            )
             print(query.cursor.query)
             for image_id, image_path, name, created_date, file_size, hits, uploader, rating in query:
                 img_model = ImageModel(

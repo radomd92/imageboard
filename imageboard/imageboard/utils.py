@@ -11,6 +11,6 @@ def paginated(function):
         return function(*args, **kw, page=page)
 
     wrapped_function = wrapper
-    wrapped_function.__name__ = function.__name__ + '_wrapper'
+    wrapped_function.__name__ = f'{function.__name__}_wrapper'
     return wrapped_function
 

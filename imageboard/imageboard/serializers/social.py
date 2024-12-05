@@ -69,12 +69,10 @@ class Message(JSONBuilder):
 
     @property
     def replies(self):
-        replies = [Message(reply) for reply in self.model.replies]
-        return replies
+        return [Message(reply) for reply in self.model.replies]
 
     def serialize(self) -> dict:
-        serialized = super(Message, self).serialize()
-        return serialized
+        return super(Message, self).serialize()
 
     @property
     def message_date(self):

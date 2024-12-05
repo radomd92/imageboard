@@ -47,14 +47,10 @@ class Image(db.Model):
 
     @property
     def tags(self):
-        ret = []
         tags_for_image = db.session.query(TagImage, Tag.name)\
-            .join(Tag)\
-            .filter(TagImage.image == self.id)
-        for tag_image, data in tags_for_image:
-            ret.append(Tag(name=data, id=tag_image))
-
-        return ret
+                .join(Tag)\
+                .filter(TagImage.image == self.id)
+        return [Tag(name=data, id=tag_image) for tag_image, data in tags_for_image]
 
     @property
     def rating(self):
@@ -101,21 +97,24 @@ class Message(db.Model):
     _function_was_called = False
 
     @classmethod
-    def get_by_id(self, id_: int) -> 'Message':
+    def get_by_id(cls, id_: int) -> 'Message':
         data = db.session.query(Message).filter(Message.id == id_).one()
         data.fetch_replies()
         return data
 
     def fetch_replies(self):
         self._function_was_called = True
-        db_replies = db.session.query(Message).filter(Message.reply_to == self.id).all()
-        if not db_replies:
-            self._replies = []
-        else:
+        if (
+            db_replies := db.session.query(Message)
+            .filter(Message.reply_to == self.id)
+            .all()
+        ):
             for reply in db_replies:
                 reply.fetch_replies()
 
             self._replies = db_replies
+        else:
+            self._replies = []
 
     @property
     def replies(self):

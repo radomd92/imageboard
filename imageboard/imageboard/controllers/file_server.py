@@ -28,12 +28,12 @@ class RedisCache(object):
     def add_data(self, link, data, content_type):
         link_hash = sha256(link.encode('utf-8')).hexdigest()
         self.redis.set(link_hash, dumps(data))
-        self.redis.set(link_hash + '_content_type', content_type)
+        self.redis.set(f'{link_hash}_content_type', content_type)
 
     def get_data(self, link):
         link_hash = sha256(link.encode('utf-8')).hexdigest()
         cached_data = self.redis.get(link_hash)
-        content_type = self.redis.get(link_hash + '_content_type')
+        content_type = self.redis.get(f'{link_hash}_content_type')
         if cached_data:
             return loads(cached_data), str(content_type, 'utf8')
         else:

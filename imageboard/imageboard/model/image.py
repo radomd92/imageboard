@@ -32,7 +32,7 @@ class Image(Model):
 
     @classmethod
     def from_db(cls, db_model):
-        image = Image(
+        return Image(
             name=db_model.name,
             image_path=db_model.image_path,
             uploader=db_model.uploader,
@@ -44,17 +44,15 @@ class Image(Model):
             created_date=db_model.created_date,
         )
 
-        return image
-
     def __repr__(self):
         retstr = "<Image Model ("
-        retstr += " name=" + str(self.name)
-        retstr += " image_path=" + str(self.image_path)
-        retstr += " uploader=" + str(self.uploader)
-        retstr += " image_id=" + str(self.image_id)
-        retstr += " file_size=" + str(self.file_size)
-        retstr += " hits=" + str(self.hits)
-        retstr += " rating=" + str(self.rating)
-        retstr += " created_date=" + str(self.created_date)
+        retstr += f" name={str(self.name)}"
+        retstr += f" image_path={str(self.image_path)}"
+        retstr += f" uploader={str(self.uploader)}"
+        retstr += f" image_id={str(self.image_id)}"
+        retstr += f" file_size={str(self.file_size)}"
+        retstr += f" hits={str(self.hits)}"
+        retstr += f" rating={str(self.rating)}"
+        retstr += f" created_date={str(self.created_date)}"
         retstr += ')>'
         return retstr
