@@ -1,5 +1,24 @@
+from imageboard import rate_limit_identity
 from imageboard.database import AuditEvent, Image, Message, db
 from tests.conftest import MEMBER_PASSWORD, csrf_token
+
+
+def test_rate_limit_identity_ignores_spoofed_x_forwarded_for(app):
+    with app.test_request_context(
+        '/', headers={'X-Forwarded-For': '1.1.1.1, 2.2.2.2'}
+    ):
+        # Without a trusted proxy the raw remote address is used.
+        app.config['TRUSTED_PROXY_NETWORKS'] = ''
+        assert rate_limit_identity().startswith('ip:')
+
+    with app.test_request_context(
+        '/',
+        environ_base={'REMOTE_ADDR': '127.0.0.1'},
+        headers={'X-Forwarded-For': '1.1.1.1, 2.2.2.2'},
+    ):
+        app.config['TRUSTED_PROXY_NETWORKS'] = '127.0.0.1/32'
+        identity = rate_limit_identity()
+        assert identity == 'ip:2.2.2.2'
 
 
 def test_private_by_default_and_security_headers(client):

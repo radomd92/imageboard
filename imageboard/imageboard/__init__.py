@@ -37,7 +37,9 @@ def rate_limit_identity():
                 if network.strip()
             ]
             if any(remote_ip in network for network in networks):
-                forwarded = request.headers['X-Forwarded-For'].split(',', 1)[0].strip()
+                # Trust the address added by the trusted reverse proxy (the
+                # right-most value), not the client-controllable left-most value.
+                forwarded = request.headers['X-Forwarded-For'].rsplit(',', 1)[-1].strip()
                 return f'ip:{ipaddress.ip_address(forwarded)}'
         except ValueError:
             pass
