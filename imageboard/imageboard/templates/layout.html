@@ -1,47 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title }} - Paradise</title>
-    <link rel="stylesheet" type="text/css" href="/static/content/bootstrap.min.css" />
-    <link rel="stylesheet" type="text/css" href="/static/content/site.css" />
-    <script src="/static/scripts/modernizr-2.6.2.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='content/site.css') }}">
 </head>
-
 <body>
-    <div class="navbar navbar-inverse navbar-fixed-top">
-        <div class="container">
-            <div class="navbar-header">
-                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
-                    <span class="icon-bar"></span>
-                    <span class="icon-bar"></span>
-                    <span class="icon-bar"></span>
-                </button>
-                <a href="/" class="navbar-brand">Paradise</a>
-            </div>
-            <div class="navbar-collapse collapse">
-                <ul class="nav navbar-nav">
-                    <li><a href="{{ url_for('home') }}">Home</a></li>
-                    <li><a href="{{ url_for('about') }}">About</a></li>
-                    <li><a href="/search">Search</a></li>
-                    <li><a href="/explore">Explore</a></li>
-                    <li><a href="{{ url_for('contact') }}">Contact</a></li>
-                </ul>
-            </div>
+    <nav class="navbar navbar-inverse navbar-fixed-top" aria-label="Primary navigation">
+        <div class="container navbar-content">
+            <a href="{{ url_for('main.home') }}" class="navbar-brand">Paradise</a>
+            {% if current_user.is_authenticated %}
+            <ul class="nav navbar-nav">
+                <li><a href="{{ url_for('main.home') }}">Home</a></li>
+                <li><a href="{{ url_for('main.search') }}">Search</a></li>
+                <li><a href="{{ url_for('main.get_used_tags') }}">Tags</a></li>
+                {% if current_user.is_admin %}<li><a href="{{ url_for('main.explore') }}">Index media</a></li>{% endif %}
+                <li><a href="{{ url_for('main.about') }}">About</a></li>
+            </ul>
+            <form class="navbar-form navbar-right" action="{{ url_for('auth.logout') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-default" type="submit">Sign out {{ current_user.name }}</button>
+            </form>
+            {% endif %}
         </div>
-    </div>
+    </nav>
 
-    <div class="container body-content">
+    <main class="container body-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }}" role="alert">{{ message }}</div>
+        {% endfor %}
+        {% endwith %}
         {% block content %}{% endblock %}
-        <hr />
-        <footer>
-            <p>&copy; {{ year }} - Paradise</p>
-        </footer>
-    </div>
-
-
-    {% block scripts %}{% endblock %}
-
+    </main>
+    <footer class="container"><hr><p>&copy; {{ year }} Paradise</p></footer>
 </body>
 </html>

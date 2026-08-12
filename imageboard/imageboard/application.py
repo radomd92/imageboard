@@ -1,186 +1,145 @@
-"""
-Routes and views for the flask application.
-"""
+"""Main browsing and media routes."""
 
-import io
+from flask import Blueprint, Response, render_template, request
+from flask_login import current_user
 
-import urllib3
-from flask import render_template, request, send_file
-from . import app
-from .controllers.file_server import FileServerController
+from . import limiter
+from .controllers.exceptions import NoSuchImageException
+from .controllers.file_server import FileServerController, canonical_media_path, is_supported_media
 from .controllers.image import ImageController, TagController
+from .permissions import admin_required
 from .serializers.image import Image as ImageSerializer
-from .utils import paginated
-from .images import image_pages
+
+main_pages = Blueprint('main', __name__)
+file_server = FileServerController()
+images = ImageController()
+tags = TagController()
 
 
-urllib3.disable_warnings()
-
-file_server = FileServerController(app)
-image = ImageController(app)
-tags = TagController(app)
-
-app.register_blueprint(image_pages)
+def page_number():
+    try:
+        return max(1, int(request.args.get('page', '1')))
+    except ValueError:
+        return 1
 
 
-@app.route('/')
+@main_pages.get('/')
 def home():
-    """Renders the home page."""
     return render_template(
         'index.html',
-        title='Main page',
-        images_needing_tags=[ImageSerializer(model) for model in image.get_image_needing_tags()],
-        used_tags=image.get_used_tags(8),
+        title='Library',
+        images_needing_tags=[ImageSerializer(model) for model in images.get_image_needing_tags()],
+        used_tags=images.get_used_tags(8),
         most_viewed_tags_monthly=tags.get_monthly_viewed(),
     )
 
 
-@app.route('/tags')
+@main_pages.get('/tags')
 def get_used_tags():
     return render_template(
-        'tag.html',
-        title='Tag',
-        images_from_tag=None,
-        tags=image.get_used_tags(0),
+        'tag.html', title='Tags', images_from_tag=None, tags=images.get_used_tags(0), page=1
     )
 
 
-@app.route('/tags/<tag_name>')
-@paginated
-def get_images_tags(tag_name=None, page=0):
+@main_pages.get('/tags/<tag_name>')
+def get_images_tags(tag_name):
+    page = page_number()
     return render_template(
         'tag.html',
         title='Tag',
         tags=None,
         page=page,
-        images_from_tag=image.get_images_with_tag(tag_name, page),
+        images_from_tag=images.get_images_with_tag(tag_name, page),
     )
 
 
-@app.route('/search', methods=['POST', 'GET'])
-def search(page=0):
-    search_term = request.args.get('term')
-    image_list = []
-    if search_term is not None:
-        image_list = image.get_search_results(search_term, page)
-
+@main_pages.get('/search')
+def search():
+    page = page_number()
+    search_term = request.args.get('term', '')
+    image_list = images.get_search_results(search_term, page)
     return render_template(
         'search.html',
         title='Search results',
+        term=search_term,
         images=[ImageSerializer(model) for model in image_list],
         page=page,
     )
 
 
-@app.route('/image_link/<link>')
-def image_link(link):
-    """Fetches images from image server. Link must replace / with $."""
-    data, mimetype = file_server.get_image(link)
-    image.register_hit(image.get_image_from_link(link).image_id)
-    return send_file(
-        io.BytesIO(data),
-        mimetype=mimetype,
-        as_attachment=False,
-        download_name=link.replace('$', '/').split('/')[-1]
+@main_pages.get('/media/<path:link>')
+@limiter.limit('120 per minute')
+def media(link):
+    canonical = canonical_media_path(link)
+    image_model = images.get_image_from_link(canonical)
+    upstream, mimetype, filename = file_server.open_media(canonical)
+    images.register_hit(image_model.image_id)
+    return _stream_response(upstream, mimetype, filename, cache_seconds=0)
+
+
+@main_pages.get('/thumbnail/<path:link>/<size>')
+@limiter.limit('300 per minute')
+def thumbnail(link, size):
+    canonical = canonical_media_path(link)
+    images.get_image_from_link(canonical)
+    upstream, mimetype, filename = file_server.open_media(canonical, thumbnail_size=size)
+    return _stream_response(upstream, mimetype, filename, cache_seconds=86400)
+
+
+def _stream_response(upstream, mimetype, filename, cache_seconds):
+    response = Response(file_server.iter_media(upstream), mimetype=mimetype, direct_passthrough=True)
+    response.headers['Content-Disposition'] = 'inline'
+    response.headers['Cache-Control'] = (
+        f'private, max-age={cache_seconds}' if cache_seconds else 'private, no-store'
     )
+    response.headers['Content-Length'] = upstream.headers.get('Content-Length', '')
+    if not response.headers['Content-Length']:
+        response.headers.pop('Content-Length', None)
+    return response
 
 
-@app.route('/explore_recursive/')
-@app.route('/explore_recursive/<link>')
-def explore_recursively(link='', current_depth=0, max_depth=7):
-
-    links = file_server.get_link_as_json(link.replace('$', '/'))
-    for link_item in links:
-        link_item['link'] = link_item['name']
-        if link:
-            link_item['link'] = f'{link}$' + link_item['name']
-
-        link_item['text'] = link_item['name']
-        already_existing_image = file_server.reference_image_depth(
-            link_item['text'],
-            link_item['link'],
-            current_depth,
-            link_item.get('size', None)
-        )
-        link_item['image_db_data'] = None
-        if already_existing_image is not None:
-            link_item['image_db_data'] = ImageSerializer(already_existing_image).serialize()
-
-        if max_depth > current_depth and link_item['type'] == 'directory':
-            print('  ' * current_depth + "Recursive call {")
-            try:
-                explore_recursively(link_item['link'], current_depth+1, max_depth)
-            except Exception as exc:
-                print(exc)
-            print('  ' * current_depth + "}")
-
-    return render_template(
-        'explorer.html',
-        title='File explorer',
-        links=links
-    )
-
-
-@app.route('/explore/')
-@app.route('/explore/<link>')
+@main_pages.get('/explore')
+@main_pages.get('/explore/<path:link>')
+@admin_required
+@limiter.limit('30 per minute')
 def explore(link=''):
-    links = file_server.get_link_as_json(link.replace('$', '/'))
-    for link_item in links:
-        link_item['link'] = link_item['name']
-        if link:
-            link_item['link'] = f'{link}$' + link_item['name']
+    parent = canonical_media_path(link, allow_empty=True)
+    listing = file_server.get_directory(parent)
+    links = []
+    for item in listing:
+        item_link = f'{parent}${item["name"]}' if parent else item['name']
+        item['link'] = canonical_media_path(item_link)
+        item['text'] = item['name']
+        item['supported'] = item['type'] == 'directory' or is_supported_media(item['link'])
+        item['image_db_data'] = None
+        if item['type'] == 'file' and item['supported']:
+            try:
+                model = images.get_image_from_link(item['link'])
+                item['image_db_data'] = ImageSerializer(model).serialize()
+            except NoSuchImageException:
+                pass
+        links.append(item)
+    return render_template('explorer.html', title='Media explorer', links=links, current_path=parent)
 
-        link_item['text'] = link_item['name']
-        already_existing_image = file_server.reference_image(
-            link_item['text'],
-            link_item['link'],
-            link_item.get('size', None)
-        )
-        link_item['image_db_data'] = None
-        if already_existing_image is not None:
-            link_item['image_db_data'] = ImageSerializer(already_existing_image).serialize()
 
+@main_pages.post('/explore/index')
+@admin_required
+@limiter.limit('60 per minute')
+def index_media():
+    link = canonical_media_path(request.form.get('link'))
+    name = request.form.get('name', '')
+    size = request.form.get('size')
+    image = file_server.reference_image(name, link, size, uploader_id=current_user.id)
+    if image is None:
+        return render_template('error.html', title='Unsupported media', error='Unsupported media type.'), 400
     return render_template(
-        'explorer.html',
-        title='File explorer',
-        links=links
+        'redirect.html',
+        redirect_to=f'/images/{image.image_id}',
+        title=image.name,
+        message='Media indexed successfully.',
     )
 
 
-@app.route('/thumbnail/<link>/<size>')
-def image_thumbnail(link, size):
-    image.register_hit(image.get_image_from_link(link).image_id, view_type='thumbnail')
-
-    if link.lower().split('.')[-1] in ['mpg', 'mp4', 'wmv', 'mov', 'avi']:
-        link = link.replace('$', '/') + "§vthumb"
-    else:
-        link = link.replace('$', '/') + f"§thumb§{size}"
-
-    data, mimetype = file_server.get_links(link)
-
-    return send_file(
-        io.BytesIO(data),
-        mimetype=mimetype,
-        as_attachment=False,
-        download_name=link.split('/')[-1]
-    )
-
-
-@app.route('/contact')
-def contact():
-    """Renders the contact page."""
-    return render_template(
-        'contact.html',
-        title='Contact',
-        message='Do not contact us. Speak to God and he shall answer.'
-    )
-
-
-@app.route('/about')
+@main_pages.get('/about')
 def about():
-    """Renders the about page."""
-    return render_template(
-        'about.html',
-        title='About the Paradise',
-        message=''
-    )
+    return render_template('about.html', title='About', message='A private, self-hosted media library.')

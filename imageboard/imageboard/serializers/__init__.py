@@ -24,7 +24,8 @@ class JSONBuilder(Builder):
                 attribute_value = getattr(self, attribute_name)
             except AttributeError as e:
                 raise JSONBuilderError(
-                    f"JSON node '{json_node_name}' in {self.__class__.__name__} class is mapped to non-existing attribute '{attribute_name}'"
+                    f"JSON node '{json_node_name}' in {self.__class__.__name__} is mapped to "
+                    f"non-existing attribute '{attribute_name}'"
                 ) from e
 
             if isinstance(attribute_value, Builder):
@@ -68,4 +69,4 @@ class JSONBuilder(Builder):
 
 
 def serialize_date(date):
-    return date.strftime("%Y-%m-%d %H:%M:%S")
+    return date.strftime("%Y-%m-%d %H:%M:%S") if date else ''

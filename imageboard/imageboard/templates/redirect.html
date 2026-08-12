@@ -1,11 +1,6 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="refresh" content="5; url='{{ redirect_to }}'"/>
-</head>
-<body>
+{% extends "layout.html" %}
+{% block content %}
 <h1>{{ title }}</h1>
 <p>{{ message }}</p>
-<p>You will shortly be redirected to <a href="{{ redirect_to }}">this link</a>.</p>
-</body>
-</html>
+<p><a href="{{ redirect_to }}">Continue</a></p>
+{% endblock %}

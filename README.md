@@ -1,58 +1,111 @@
-# imageboard
+# Paradise Imageboard
 
-A simple imageboard written in Python using Flask. 
+Paradise is a private, self-hosted media catalog. Nginx serves an existing read-only image/video tree, while Flask stores searchable metadata, tags, authenticated comments, audit events, and view counts in PostgreSQL.
 
-It works thanks to a nginx HTTP server serving a given folder as JSON data. A template for configuration has been given in in the nginx_file_server folder.
-To check if it works, compile and launch a nginx server with the [thumbnail module](https://nginx.org/en/docs/http/ngx_http_image_filter_module.html).
-A simple authentication with username and password will restrict access to the nginx server. Remove it if not necessary.
+The service is private by default. All application content requires a local account. Only administrators can browse the media origin, index files, or edit metadata. Public registration is intentionally unavailable.
 
-# Set-up
+## Security Model
 
-- First, set up the album with all your photos in a folder from which nginx will be serving.
-- Compile Nginx with thumbnail module (mandatory) and  the XSLT module (optional, but also convenient)
-- Edit the `nginx_file_server/nginx.conf.example` file and move / change file paths according to your Nginx setup.
-- The imageboard configuration uses Nginx the `autoindex` ability to explore a given folder and present the folder's
-  contents as a JSON list or a HTML page akin to your favourite file explorer.
+- Flask is the only browser-facing application. Do not expose the media-origin Nginx service publicly.
+- The media origin must use HTTPS with a trusted private or public CA. TLS verification cannot be disabled.
+- Every media request must reference an already indexed canonical path and an allow-listed media extension/MIME type.
+- Media is streamed with time and size limits. The application does not deserialize or persist upstream media cache payloads.
+- Mutating requests require authentication and CSRF tokens. Metadata changes require administrator privileges.
+- Login, comments, media, thumbnails, exploration, and indexing are rate limited.
+- Sessions use secure, HTTP-only, SameSite cookies. Host allow-listing, CSP, HSTS, anti-framing, MIME-sniffing, referrer, and permissions headers are enabled.
+- Privileged changes and comments create database audit events.
 
-## Backend: Using Nginx XSLT file explorer
-**This is what you can use to explore your folders directly on the Nginx interface**
+This design materially reduces common application risks, but no software is "bulletproof." Host patching, firewall policy, TLS key custody, database/media backups, monitoring, and incident response remain operator responsibilities.
 
-Uncomment these lines and changes the values to reflect your configuration:
-```buildoutcfg
-xslt_string_param title $1;
-xslt_stylesheet /path/to/template.xslt;
-```
-Change the `autoindex_format` to `xml`
-```buildoutcfg
-autoindex_format xml;
-```
+## Requirements
 
-Once you start nginx, you should find your images and be able to visualise them.
+- Python 3.13 or Docker
+- PostgreSQL 17
+- Redis 8 for shared production rate limits
+- Nginx compiled with `ngx_http_image_filter_module`
+- A trusted TLS certificate for both the user-facing reverse proxy and media origin
 
-## Backend: Using Nginx JSON file explorer
-**This is what the imageboard will be using to index images present on -- and served by -- your Nginx backend**
+## Configuration
 
-## Frontend: Configuration
-In `imageboard/imageboard` folder; create `config.py` based on the `config_template.py`.
+Copy `.env.example` to `.env` and replace every placeholder. Never commit `.env`.
 
-```
-FILE_SERVER = "https://user:pass@localhost:8443/images/"
-SQLALCHEMY_DATABASE_URI = 'postgresql://imageboard:password@localhost:5432/image_board'
+Generate the application secret with:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
 ```
 
-## Frontend: Using flask
+Important settings:
 
-Create a virtual environment and install dependencies in `requirements.txt`
+- `IMAGEBOARD_SECRET_KEY`: at least 32 random characters
+- `IMAGEBOARD_DATABASE_URL`: SQLAlchemy PostgreSQL connection URL
+- `IMAGEBOARD_FILE_SERVER`: HTTPS URL to the Nginx `/images` location, without embedded credentials
+- `IMAGEBOARD_FILE_SERVER_USERNAME` and `IMAGEBOARD_FILE_SERVER_PASSWORD`: media-origin Basic Auth
+- `IMAGEBOARD_FILE_SERVER_CA_BUNDLE`: CA bundle path, or omit it for system trust
+- `IMAGEBOARD_TRUSTED_HOSTS`: comma-separated browser-facing hostnames
+- `IMAGEBOARD_TRUSTED_PROXY_NETWORKS`: exact proxy source CIDRs permitted to supply `X-Forwarded-For`
+- `IMAGEBOARD_HEALTH_TOKEN`: independent random bearer token for `/health/ready`
+- `IMAGEBOARD_RATE_LIMIT_STORAGE`: Redis URL in multi-worker production
 
-Launch the service by calling the `runserver.py`
+Secure cookies and HSTS default to enabled. They may only be disabled for local HTTP development, never production.
 
-## Frontend: Data storage
+## Database Setup
 
-PostgreSQL is used as the default data storage engine. It does not store the images itself, but
-rather the backend path of the images. Backend images and videos are discovered when the user 
-goes through the exploration page.
+Install dependencies and apply migrations from `imageboard/`:
 
-To increase responsiveness, Redis and a filesystem cache are also used for the images. They are encrypted at rest on the filesystem using RSA (keys) and AES (data)
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+flask --app runserver:app db upgrade
+flask --app runserver:app create-user --admin
+```
 
-# Feature list
-- Image tagging: associate tags with images.
+For an existing PostgreSQL installation, take a verified database backup before migrating. The baseline detects the legacy tables, preserves valid media metadata, tags, comments, ratings, and hits, and adds the hardened constraints and audit table. All legacy account names are renamed and all passwords are deliberately invalidated because the old application never enforced authentication. Create new accounts with the CLI. Test the migration against a restored staging copy and verify row counts, application behavior, and rollback procedures before production cutover. The baseline migration is intentionally irreversible; rollback means restoring the verified backup.
+
+## Production Deployment
+
+`docker-compose.yml` provides the application, PostgreSQL, and Redis baseline. The application binds only to `127.0.0.1:8000`; place a maintained HTTPS reverse proxy in front of it.
+
+```bash
+docker compose build
+docker compose run --rm app flask --app runserver:app db upgrade
+docker compose run --rm app flask --app runserver:app create-user --admin
+docker compose up -d
+```
+
+Deployment requirements:
+
+- Restrict media-origin port `8443` to the application host at the firewall.
+- Mount CA certificates and credentials through secrets, not container images or environment files where a secrets manager is available.
+- Terminate browser TLS at the reverse proxy and forward the original `Host` unchanged.
+- Do not add `ProxyFix` unless exact trusted proxy hops are configured.
+- Back up PostgreSQL and the external media tree independently; regularly test restores.
+- Alert on HTTP 401/403/429/5xx rates, readiness failures, origin TLS failures, storage capacity, and database health.
+- Rotate application secrets, origin credentials, TLS keys, and user passwords under a documented incident procedure.
+
+Liveness is available at `/health/live`. Readiness, including a database check, is available at `/health/ready` and requires `Authorization: Bearer <IMAGEBOARD_HEALTH_TOKEN>`.
+
+## Media Origin
+
+Adapt `nginx_file_server/nginx.conf.example`:
+
+1. Serve a dedicated read-only media root with symlinks disabled.
+2. Configure a valid TLS certificate and Basic Auth secret.
+3. Restrict network access to the application host.
+4. Keep all methods except `GET` denied.
+5. Confirm image-filter memory limits fit the host.
+6. Enable video thumbnail extraction only after independently reviewing and patching that third-party module.
+
+## Verification
+
+Install development dependencies and run:
+
+```bash
+pytest
+ruff check imageboard tests
+bandit -r imageboard -x imageboard/static
+pip-audit -r requirements.txt
+```
+
+Dependency scanning is time-sensitive. Rebuild and rerun it whenever images or packages are updated.

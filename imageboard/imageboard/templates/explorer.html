@@ -1,40 +1,38 @@
 {% extends "layout.html" %}
 {% block content %}
-
-<div class="row">
-    <div class="col-md-8">
-        <h2>Directory</h2>
-        <ul>
-            {% for link in links %}
-                {% if link.type == "directory" %}
-            <li>
-                <a href="/explore/{{ link.link }}">{{ link.text }}</a>
-            </li>
-                {% endif %}
-            {% endfor %}
-        </ul>
-        <h2>Images</h2>
-        <table>
-            <tr>
-                <th>Image</th>
-                <th>Name</th>
-                <th>Tags</th>
-            </tr>
-            {% for link in links %}
-                {% if link.type != "directory" %}
-            <tr>
-                {% if link.image_db_data != None %}
-                <td><a href="/images/{{ link.image_db_data.image_id }}"><img src="/thumbnail/{{ link.link }}/small"></a></td>
-                {% else %}
-                <td><img src="/thumbnail/{{ link.link }}/small"></td>
-                {% endif %}
-                <td><a href="/image_link/{{ link.link }}">{{ link.text }}</a> ({{ link.size // 1024 }} kB)</td>
-
-            </tr>
-                {% endif %}
-            {% endfor %}
-        </table>
-    </div>
+<h1>Media index</h1>
+<p>Browsing does not modify the catalog. Explicitly index each supported file you want to expose.</p>
+<h2>Directories</h2>
+<ul>
+{% for link in links if link.type == 'directory' %}
+    <li><a href="{{ url_for('main.explore', link=link.link) }}">{{ link.text }}</a></li>
+{% else %}<li>No subdirectories.</li>{% endfor %}
+</ul>
+<h2>Media</h2>
+<div class="table-responsive">
+<table class="table">
+    <thead><tr><th>Name</th><th>Size</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for link in links if link.type == 'file' %}
+    <tr>
+        <td>{{ link.text }}</td>
+        <td>{{ (link.size or 0) // 1024 }} KiB</td>
+        <td>
+        {% if not link.supported %}Unsupported
+        {% elif link.image_db_data %}<a href="{{ url_for('images.image_detail', image_id=link.image_db_data.image_id) }}">Indexed</a>
+        {% else %}
+            <form action="{{ url_for('main.index_media') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="link" value="{{ link.link }}">
+                <input type="hidden" name="name" value="{{ link.text }}">
+                <input type="hidden" name="size" value="{{ link.size }}">
+                <button class="btn btn-primary btn-sm" type="submit">Index</button>
+            </form>
+        {% endif %}
+        </td>
+    </tr>
+    {% else %}<tr><td colspan="3">No files.</td></tr>{% endfor %}
+    </tbody>
+</table>
 </div>
-
 {% endblock %}

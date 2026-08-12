@@ -1,4 +1,4 @@
-from werkzeug.exceptions import NotFound, BadRequest
+from werkzeug.exceptions import BadRequest, NotFound
 
 
 class CacheError(IOError):

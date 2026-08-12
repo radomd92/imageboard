@@ -1,30 +1,31 @@
 {% extends "layout.html" %}
 {% block content %}
+<h1>Edit {{ image.name }}</h1>
 <div class="row">
-    <form method="POST" action="edit/title">
-        <h2><input type="text" name="title" value="{{ image.name }}"/></h2>
-        <input type="submit" value="Save title"/>
-    </form>
-    {{ image }}
-    <div class="col-md-4">
-        {% if image.uploader == 'None' %}
-        <p>Unknown uploader</p>
-        {% else %}
-        <p>Added by {{ image.uploader }}</p>
-        {% endif %}
-        <h3>Tags</h3>
-        <p>Enter one tag per line. Case insensitive. Click on Save tags when you're done.</p>
-        <form method="POST" action="edit/tags">
-        <textarea name="tags" cols="25" , rows="10">{% for tag in image.tags %}
-{{ tag.name }}{% endfor %}</textarea><br/>
-            <input type="submit" value="Save tags"/>
+    <section class="col-md-6">
+        <form method="post" action="{{ url_for('images.edit_image_title', image_id=image.image_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input class="form-control" id="title" name="title" value="{{ image.name }}" required maxlength="200">
+            </div>
+            <button class="btn btn-primary" type="submit">Save title</button>
         </form>
-    </div>
-    <div class="col-md-4 img-thumbnail">
-        <a href="/image_link/{{image.image_path}}">
-            <img src="/thumbnail/{{ image.image_path }}/large">
+        <hr>
+        <form method="post" action="{{ url_for('images.edit_image_tags', image_id=image.image_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="tags">Tags, one per line</label>
+                <textarea class="form-control" id="tags" name="tags" rows="10" maxlength="5000">{% for tag in image.tags %}{{ tag.name }}{% if not loop.last %}
+{% endif %}{% endfor %}</textarea>
+            </div>
+            <button class="btn btn-primary" type="submit">Save tags</button>
+        </form>
+    </section>
+    <section class="col-md-6 media-frame">
+        <a href="{{ url_for('main.media', link=image.image_path) }}">
+            <img src="{{ url_for('main.thumbnail', link=image.image_path, size='large') }}" alt="Thumbnail for {{ image.name }}">
         </a>
-    </div>
+    </section>
 </div>
-
 {% endblock %}

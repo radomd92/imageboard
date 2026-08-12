@@ -1,0 +1,7 @@
+{% extends "layout.html" %}
+{% block content %}
+<section aria-labelledby="error-title">
+    <h1 id="error-title">{{ title }}</h1>
+    <p>{{ error.description if error.description is defined else error }}</p>
+</section>
+{% endblock %}

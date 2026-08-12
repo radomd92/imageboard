@@ -1,22 +1,16 @@
-"""
-This script runs the imageboard application using a development server.
-"""
+"""Development launcher. Use Gunicorn for production."""
 
-from os import environ
-from imageboard.application import app
-from gevent.pywsgi import WSGIServer
+import os
+
+from imageboard import create_app
 
 
-PORT = 8888
+app = create_app()
 
-# if __name__ == '__main__':
-#     HOST = environ.get('SERVER_HOST', '0.0.0.0')
-#     try:
-#         PORT = int(environ.get('SERVER_PORT', PORT))
-#     except ValueError:
-#         PORT = 8000
-#     app.run(HOST, PORT)
 
 if __name__ == '__main__':
-    http_server = WSGIServer(('0.0.0.0', PORT), app)
-    http_server.serve_forever()
+    app.run(
+        host=os.environ.get('SERVER_HOST', '127.0.0.1'),
+        port=int(os.environ.get('SERVER_PORT', '8888')),
+        debug=False,
+    )

@@ -1,84 +1,55 @@
-from flask import render_template, request
-from flask.blueprints import Blueprint
+"""Image detail and authenticated mutation routes."""
 
-from . import app
+from flask import Blueprint, redirect, render_template, request, url_for
 
-from .controllers.file_server import FileServerController
+from . import limiter
 from .controllers.image import ImageController
+from .permissions import admin_required
 from .serializers.image import Image as ImageSerializer
 from .serializers.social import Message as MessageSerializer
 
-
-PAGE_NAME = 'images'
-PAGE_PREFIX = f'/{PAGE_NAME}'
-
-
-file_server = FileServerController(app)
-image = ImageController(app)
-
-image_pages = Blueprint(PAGE_NAME, __name__, template_folder='templates')
+image_pages = Blueprint('images', __name__, url_prefix='/images')
+images = ImageController()
 
 
-@image_pages.route(f'{PAGE_PREFIX}/<image_id>/edit')
-def edit_image(image_id=None):
-    """Fetches an image by a given ID."""
-    current_image = image.get_image_from_id(image_id)
+@image_pages.get('/<int:image_id>/edit')
+@admin_required
+def edit_image(image_id):
+    current_image = images.get_image_from_id(image_id)
     return render_template(
-        'image_edit.html',
-        title='Image',
-        image=ImageSerializer(current_image).serialize()
+        'image_edit.html', title='Edit image', image=ImageSerializer(current_image).serialize()
     )
 
 
-@image_pages.route(f'{PAGE_PREFIX}/<image_id>/edit/title', methods=['POST'])
-def edit_image_title(image_id=None):
-    title = request.form.get('title')
-    current_image = image.set_image_title(image_id, title)
-    return render_template(
-        'redirect.html',
-        redirect_to=f"/images/{str(current_image.image_id)}",
-        title=current_image.name,
-        message="Title edit successful. You'll be redirected shortly...",
-    )
+@image_pages.post('/<int:image_id>/edit/title')
+@admin_required
+def edit_image_title(image_id):
+    images.set_image_title(image_id, request.form.get('title'))
+    return redirect(url_for('images.image_detail', image_id=image_id), code=303)
 
 
-@image_pages.route(f'{PAGE_PREFIX}/<image_id>/comment', methods=['POST'])
-def add_user_comment(image_id=None):
-    text = request.form.get('comment')
-    reply_to = request.form.get('reply_to', None)
-    current_image = image.add_comment(image_id, text, reply_to)
-    return render_template(
-        'redirect.html',
-        redirect_to=f"/images/{str(current_image.image_id)}",
-        title=current_image.name,
-        message="Title edit successful. You'll be redirected shortly...",
-    )
+@image_pages.post('/<int:image_id>/comment')
+@limiter.limit('10 per minute')
+def add_user_comment(image_id):
+    images.add_comment(image_id, request.form.get('comment'), request.form.get('reply_to'))
+    return redirect(url_for('images.image_detail', image_id=image_id), code=303)
 
 
-@image_pages.route(f'{PAGE_PREFIX}/<image_id>/edit/tags', methods=['POST'])
-def edit_image_tag(image_id=None):
-    data = request.form.get('tags').split("\r\n")
-    tags = [t.strip().lower() for t in data]
-
-    current_image = image.get_image_from_id(image_id)
-    image.set_image_tags(image_id, tags)
-    return render_template(
-        'redirect.html',
-        redirect_to=f"/images/{str(current_image.image_id)}",
-        title=current_image.name,
-        message="Tag edit successful. You'll be redirected shortly...",
-    )
+@image_pages.post('/<int:image_id>/edit/tags')
+@admin_required
+def edit_image_tags(image_id):
+    raw_tags = request.form.get('tags', '')
+    images.set_image_tags(image_id, raw_tags.splitlines())
+    return redirect(url_for('images.image_detail', image_id=image_id), code=303)
 
 
-@image_pages.route(f'{PAGE_PREFIX}/<image_id>')
-def images(image_id=None):
-    """Fetches an image by a given ID."""
-    current_image = image.get_image_from_id(image_id)
-    comments = image.load_comments(image_id)
-    image.register_hit(image_id)
+@image_pages.get('/<int:image_id>')
+def image_detail(image_id):
+    current_image = images.get_image_from_id(image_id)
+    comments = images.load_comments(image_id)
     return render_template(
         'image.html',
-        title='Image',
+        title=current_image.name,
         image=ImageSerializer(current_image).serialize(),
-        comments=[MessageSerializer(comment).serialize() for comment in comments]
+        comments=[MessageSerializer(comment).serialize() for comment in comments],
     )

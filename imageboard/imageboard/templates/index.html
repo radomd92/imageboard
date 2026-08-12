@@ -1,63 +1,38 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="jumbotron">
+<header class="page-header">
     <h1>Paradise</h1>
-    <p class="lead">Enjoy life and what it has to offer.</p>
-</div>
+    <p class="lead">Your private media library.</p>
+</header>
 <div class="row">
-    <div class="col-md-4">
-        <h2><a href="/tags">Tags</a></h2>
-        <p>Recent tags</p>
+    <section class="col-md-4">
+        <h2><a href="{{ url_for('main.get_used_tags') }}">Tags</a></h2>
         {% for tag in used_tags %}
-        <div class="imagecontainer img-thumbnail">
-            <div class="caption">
-                <p><span class="imagename"><a href="tags/{{ tag.tag_name }}">{{ tag.tag_name }}</a>  ({{ tag.images }}) </span>
-                </p>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    <div class="col-md-4">
-        <h2><a href="/explore">Explore</a></h2>
-        <p>All images that await being tagged</p>
+        <p><a href="{{ url_for('main.get_images_tags', tag_name=tag.tag_name) }}">{{ tag.tag_name }}</a> ({{ tag.images }})</p>
+        {% else %}<p>No frequently used tags yet.</p>{% endfor %}
+    </section>
+    <section class="col-md-4">
+        <h2>Needs tags</h2>
         {% for image in images_needing_tags %}
-        <div class="imagecontainer img-thumbnail">
-            <a href="image_link/{{ image.image_path }}">
-                <img src="/thumbnail/{{ image.image_path }}/small">
+        <article class="image-card img-thumbnail">
+            <a href="{{ url_for('images.image_detail', image_id=image.image_id) }}">
+                <img src="{{ url_for('main.thumbnail', link=image.image_path, size='small') }}" alt="Thumbnail for {{ image.name }}" loading="lazy">
             </a>
-            <div class="caption">
-                <p><span class="imagename"><a href="/images/{{ image.image_id }}">{{ image.name }}</a></span></p>
-                <p>
-                        <span class="filesize">
-                            ({{ image.file_size // 1024}} KiB)
-                        </span>
-                    uploaded on {{ image.created_date }}
-                </p>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-
-    <div class="col-md-4">
-        <h2><a href="/explore">Monthly visited</a></h2>
-        <p>This month's most visited tagged images</p>
+            <p><a href="{{ url_for('images.image_detail', image_id=image.image_id) }}">{{ image.name }}</a></p>
+            <small>{{ (image.file_size or 0) // 1024 }} KiB, added {{ image.created_date }}</small>
+        </article>
+        {% else %}<p>Every indexed item has tags.</p>{% endfor %}
+    </section>
+    <section class="col-md-4">
+        <h2>Popular this month</h2>
         {% for tag in most_viewed_tags_monthly %}
-        <div class="imagecontainer img-thumbnail">
-            <a href="image_link/{{ tag.most_viewed_image_path }}">
-                <img src="/thumbnail/{{ tag.most_viewed_image_path }}/small">
+        <article class="image-card img-thumbnail">
+            <a href="{{ url_for('main.get_images_tags', tag_name=tag.tag) }}">
+                <img src="{{ url_for('main.thumbnail', link=tag.most_viewed_image_path, size='small') }}" alt="Representative thumbnail for {{ tag.tag }}" loading="lazy">
             </a>
-            <div class="caption">
-                <p><span class="imagename"><a href="/tags/{{ tag.tag }}">{{ tag.tag }}</a></span></p>
-                <p>
-                        <span class="filesize">
-                            ({{ tag.visits }} views)
-                        </span>
-                </p>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-
-</div>
+            <p><a href="{{ url_for('main.get_images_tags', tag_name=tag.tag) }}">{{ tag.tag }}</a> ({{ tag.visits }} views)</p>
+        </article>
+        {% else %}<p>No viewing data yet.</p>{% endfor %}
+    </section>
 </div>
 {% endblock %}

@@ -1,123 +1,153 @@
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.sql import func
-from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import UUID
+"""Relational data model."""
 
-# create the extension
-db = SQLAlchemy()
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from flask_login import UserMixin
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import CheckConstraint, Index, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, relationship
+from werkzeug.security import check_password_hash, generate_password_hash
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+db = SQLAlchemy(model_class=Base)
 
 
 class Rating(db.Model):
     __tablename__ = 'ratings'
+    __table_args__ = (CheckConstraint('rating >= 1 AND rating <= 5', name='rating_between_1_and_5'),)
 
     id = db.Column(db.Integer, primary_key=True)
-    user = db.Column(db.Integer, db.ForeignKey('user.id'))
-    image = db.Column(db.Integer, db.ForeignKey('image.id'))
-    rating = db.Column(db.Integer)
-    date = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    user = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    image = db.Column(db.Integer, db.ForeignKey('image.id', ondelete='CASCADE'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    date = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
 
 
 class Tag(db.Model):
     __tablename__ = 'tag'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
+    name = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    image_links = relationship('TagImage', back_populates='tag_record', cascade='all, delete-orphan')
 
 
 class TagImage(db.Model):
     __tablename__ = 'tag_image'
-    __table_args__ = (
-        db.UniqueConstraint('tag', 'image', name='unique_component_commit'),
-    )
+    __table_args__ = (UniqueConstraint('tag', 'image', name='unique_tag_image'),)
+
     id = db.Column(db.Integer, primary_key=True)
-    image = db.Column(db.Integer, db.ForeignKey('image.id'))
-    tag = db.Column(db.Integer, db.ForeignKey('tag.id'))
+    image = db.Column(db.Integer, db.ForeignKey('image.id', ondelete='CASCADE'), nullable=False, index=True)
+    tag = db.Column(db.Integer, db.ForeignKey('tag.id', ondelete='CASCADE'), nullable=False, index=True)
+    image_record = relationship('Image', back_populates='tag_links')
+    tag_record = relationship('Tag', back_populates='image_links')
 
 
 class Image(db.Model):
     __tablename__ = 'image'
 
     id = db.Column(db.Integer, primary_key=True)
-    image_path = db.Column(db.Text,  unique=True)
+    image_path = db.Column(db.Text, unique=True, nullable=False)
     name = db.Column(db.String(200), nullable=False)
-    created_date = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    file_size = db.Column(db.Integer)
-    hits = db.Column(db.Integer)
-    uploader = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_date = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
+    file_size = db.Column(db.BigInteger)
+    hits = db.Column(db.Integer, nullable=False, server_default='0')
+    uploader = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'))
+    uploader_user = relationship('User', foreign_keys=[uploader])
+    tag_links = relationship('TagImage', back_populates='image_record', cascade='all, delete-orphan')
 
     @property
     def tags(self):
-        tags_for_image = db.session.query(TagImage, Tag.name)\
-                .join(Tag)\
-                .filter(TagImage.image == self.id)
-        return [Tag(name=data, id=tag_image) for tag_image, data in tags_for_image]
+        return [link.tag_record for link in self.tag_links]
 
     @property
     def rating(self):
-        return 0
+        ratings = [entry.rating for entry in self.rating_entries]
+        return sum(ratings) / len(ratings) if ratings else 0
 
-    @property
-    def comments(self):
-        return []
+    rating_entries = relationship('Rating', foreign_keys=[Rating.image], cascade='all, delete-orphan')
 
 
 class ImageHit(db.Model):
     __tablename__ = 'image_hits'
+    __table_args__ = (
+        Index('image_hits_image_date_idx', 'image_id', 'hit_date'),
+        CheckConstraint("type IN ('image', 'thumbnail')", name='valid_hit_type'),
+    )
 
-    hit_id = db.Column(UUID, primary_key=True, server_default=text("uuid_generate_v4()"))
-    image_id = db.Column(db.Integer, primary_key=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    hit_date = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    type = db.Column(db.String(16))
+    hit_id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    image_id = db.Column(db.Integer, db.ForeignKey('image.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'))
+    hit_date = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    type = db.Column(db.String(16), nullable=False)
 
 
-class User(db.Model):
+class User(UserMixin, db.Model):
     __tablename__ = 'user'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
-    password = db.Column(db.String(256))
-    registered = db.Column(db.DateTime(timezone=True))
-    karma = db.Column(db.Integer)
-    privileges = db.Column(db.String(100))
-    banned = db.Column(db.Boolean)
+    name = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    password = db.Column(db.String(512), nullable=False)
+    registered = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    karma = db.Column(db.Integer, nullable=False, server_default='0')
+    privileges = db.Column(db.String(100), nullable=False, server_default='user')
+    banned = db.Column(db.Boolean, nullable=False, server_default=db.false())
+
+    @staticmethod
+    def normalize_name(name):
+        normalized = ' '.join((name or '').strip().split())
+        if not 3 <= len(normalized) <= 100 or any(char in normalized for char in '/\\\x00'):
+            raise ValueError('Username must contain 3 to 100 valid characters.')
+        return normalized
+
+    def set_password(self, password):
+        self.password = generate_password_hash(password, method='scrypt')
+
+    def check_password(self, password):
+        return bool(self.password) and check_password_hash(self.password, password)
+
+    @property
+    def is_active(self):
+        return not self.banned
+
+    @property
+    def is_admin(self):
+        return self.privileges == 'admin'
 
 
 class Message(db.Model):
     __tablename__ = 'message'
+    __table_args__ = (Index('message_image_date_idx', 'image', 'message_date'),)
 
     id = db.Column(db.Integer, primary_key=True)
-    from_user = db.Column(db.Integer, db.ForeignKey('user.id'))
-    image = db.Column(db.Integer, db.ForeignKey('image.id'))
-    text = db.Column(db.String(500))
-    reply_to = db.Column(db.Integer, db.ForeignKey('message.id'))
-    message_date = db.Column(db.DateTime(timezone=True))
+    from_user = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'))
+    image = db.Column(db.Integer, db.ForeignKey('image.id', ondelete='CASCADE'), nullable=False)
+    text = db.Column(db.String(500), nullable=False)
+    reply_to = db.Column(db.Integer, db.ForeignKey('message.id', ondelete='CASCADE'))
+    message_date = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    author = relationship('User', foreign_keys=[from_user])
 
-    _replies = []
-    _function_was_called = False
 
-    @classmethod
-    def get_by_id(cls, id_: int) -> 'Message':
-        data = db.session.query(Message).filter(Message.id == id_).one()
-        data.fetch_replies()
-        return data
+class AuditEvent(db.Model):
+    __tablename__ = 'audit_event'
+    __table_args__ = (Index('audit_event_date_idx', 'created_at'),)
 
-    def fetch_replies(self):
-        self._function_was_called = True
-        if (
-            db_replies := db.session.query(Message)
-            .filter(Message.reply_to == self.id)
-            .all()
-        ):
-            for reply in db_replies:
-                reply.fetch_replies()
-
-            self._replies = db_replies
-        else:
-            self._replies = []
-
-    @property
-    def replies(self):
-        if not self._function_was_called:
-            self.fetch_replies()
-        return self._replies
+    id = db.Column(db.Integer, primary_key=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'))
+    action = db.Column(db.String(64), nullable=False)
+    object_type = db.Column(db.String(64), nullable=False)
+    object_id = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    actor = relationship('User', foreign_keys=[actor_id])

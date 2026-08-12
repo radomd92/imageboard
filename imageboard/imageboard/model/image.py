@@ -1,7 +1,5 @@
-from typing import List
 
 from . import Model
-from .social import User
 
 
 class Tag(Model):
@@ -18,7 +16,7 @@ class Tag(Model):
 
 
 class Image(Model):
-    def __init__(self, name: str, image_path: str, uploader: User, image_id=None,
+    def __init__(self, name: str, image_path: str, uploader, image_id=None,
                  file_size=0, hits=0, rating=0, created_date=None, tags: list = None):
         self.name = name
         self.created_date = created_date
@@ -35,7 +33,7 @@ class Image(Model):
         return Image(
             name=db_model.name,
             image_path=db_model.image_path,
-            uploader=db_model.uploader,
+            uploader=db_model.uploader_user.name if db_model.uploader_user else None,
             image_id=db_model.id,
             file_size=db_model.file_size,
             hits=db_model.hits,

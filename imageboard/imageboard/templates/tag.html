@@ -1,55 +1,36 @@
 {% extends "layout.html" %}
 {% block content %}
-
-<div class="row">
-    <div class="col-md-8">
-        <h2>Tags</h2>
-        {% if tags != None %}
-        {% for tag in tags %}
-        <div>
-            <h3>{{ tag.tag_name }} ({{ tag.images }} files)</h3>
-            <img src="/thumbnail/{{ tag.last_image.image_path }}/large"/>
-            <p><b>Other tags for this file</b>:
-                {% for other_tag in tag.last_image.tags %}
-                <a href="/tags/{{ other_tag.name }}"><span class="label label-default">{{ other_tag.name }}</span></a>
-                {% endfor %}
-            </p>
-        </div>
-        {% endfor %}
-        {% endif %}
-        {% if images_from_tag != None %}
-        {% for image_from_tag in images_from_tag %}
-        <div class="img-thumbnail">
-            <a href="/images/{{ image_from_tag.image.image_id }}">
-                <img src="/thumbnail/{{ image_from_tag.image.image_path }}/large"/>
-            </a>
-            <p>{{ image_from_tag.image.name }}&nbsp;(<a href="/image_link/{{ image_from_tag.image.image_path }}">full&nbsp;size</a>)
-            </p>
-            <div class="img-thumbnail">Tags:&nbsp;
-                {% for tag in image_from_tag.image.tags %}
-                    {% if 'set:' in tag.name %}
-                <a href="/tags/{{ tag.name }}"><span class="label label-info">{{ tag.name }}</span></a>
-                    {% else %}
-                <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
-        {% endif %}
-    </div>
+<h1>Tags</h1>
+{% if tags is not none %}
+<div class="tag-grid">
+{% for tag in tags %}
+    <article class="image-card img-thumbnail">
+        <a href="{{ url_for('main.get_images_tags', tag_name=tag.tag_name) }}">
+            <img src="{{ url_for('main.thumbnail', link=tag.last_image.image_path, size='large') }}" alt="Representative thumbnail for {{ tag.tag_name }}" loading="lazy">
+            <h2>{{ tag.tag_name }} <small>({{ tag.images }})</small></h2>
+        </a>
+    </article>
+{% else %}<p>No tags.</p>{% endfor %}
 </div>
-<p>Navigate
-    <a href="?page={{ page-100 }}"> <<&nbsp;Page&nbsp;-100&nbsp;</a>
-    <a href="?page={{ page-10 }}"> <<&nbsp;Page&nbsp;-10&nbsp;</a>|
-    <a href="?page={{ page-5 }}"> <<&nbsp;Page&nbsp;-5&nbsp;</a>|
-    <a href="?page={{ page-2 }}"> <&nbsp;Page&nbsp;-2&nbsp;</a>|
-    <a href="?page={{ page-1 }}"><strong>Page -1</strong>&nbsp;</a>|
-
-    <a href="?page={{ page+1 }}"><strong>Page&nbsp;+1</strong>&nbsp;</a>|
-    <a href="?page={{ page+2 }}">Page&nbsp;+3&nbsp;>> &nbsp;</a>|
-    <a href="?page={{ page+5 }}">Page&nbsp;+5 &nbsp;>&nbsp;</a>|
-    <a href="?page={{ page+10 }}">Page&nbsp;+10&nbsp;>>&nbsp;</a>|
-    <a href="?page={{ page+100 }}">Page&nbsp;+100&nbsp;>>&nbsp;</a>
-</p>
+{% endif %}
+{% if images_from_tag is not none %}
+<div class="tag-grid">
+{% for entry in images_from_tag %}
+    <article class="image-card img-thumbnail">
+        <a href="{{ url_for('images.image_detail', image_id=entry.image.image_id) }}">
+            <img src="{{ url_for('main.thumbnail', link=entry.image.image_path, size='large') }}" alt="Thumbnail for {{ entry.image.name }}" loading="lazy">
+            <p>{{ entry.image.name }}</p>
+        </a>
+        {% for tag in entry.image.tags %}
+        <a href="{{ url_for('main.get_images_tags', tag_name=tag.name) }}"><span class="label label-default">{{ tag.name }}</span></a>
+        {% endfor %}
+    </article>
+{% else %}<p>No media uses this tag.</p>{% endfor %}
+</div>
+<nav aria-label="Tag result pages">
+    {% if page > 1 %}<a class="btn btn-default" href="?page={{ page-1 }}">Previous</a>{% endif %}
+    <span>Page {{ page }}</span>
+    {% if images_from_tag|length == 30 %}<a class="btn btn-default" href="?page={{ page+1 }}">Next</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

@@ -1,6 +1,6 @@
-from . import JSONBuilder
-from . import serialize_date
-from ..model.image import Image as ImageModel, Tag as TagModel
+from ..model.image import Image as ImageModel
+from ..model.image import Tag as TagModel
+from . import JSONBuilder, serialize_date
 
 
 class Tag(JSONBuilder):
@@ -17,39 +17,6 @@ class Tag(JSONBuilder):
     @property
     def name(self):
         return self.model.name
-
-
-class User(JSONBuilder):
-    def __init__(self, user):
-        super(User, self).__init__()
-        self.model = user
-        self.mapped_variables = [
-            ('name', 'name'),
-            ('registered', 'registered'),
-            ('karma', 'karma'),
-            ('privileges', 'privileges'),
-            ('banned', 'banned'),
-        ]
-
-    @property
-    def name(self) -> str:
-        return self.model.name
-
-    @property
-    def registered(self) -> str:
-        return self.model.registered
-
-    @property
-    def karma(self) -> str:
-        return self.model.karma
-
-    @property
-    def privileges(self) -> str:
-        return self.model.privileges
-
-    @property
-    def banned(self) -> str:
-        return str(self.model.banned)
 
 
 class Image(JSONBuilder):

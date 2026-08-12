@@ -1,26 +1,30 @@
 {% extends "layout.html" %}
 {% block content %}
-
-<div class="row">
-    <form action="/search" method="get">
-        <input type="text" name="term"/>
-        {{ csrf }}
-        <input type="submit" value="Search"/>
-    </form>
-    <div class="col-md-8">
-        <h2>Search results</h2>
-            {% for image in images %}
-            <div>
-                <a href="/images/{{ image.image_id }}"><img src="/thumbnail/{{ image.image_path }}/small"></a>
-                <a href="/image_link/{{ image.image_path }}">{{ image.name }}</a> ({{ image.file_size // 1024 }} kB)
-                {% for tag in image.tags %}
-                <a href="tags/{{ tag.name }}">
-                    <button class="btn btn-outline-info btn-sm">{{ tag.name }}</button>
-                </a>&nbsp;({{ tag.images }})<br/>
-                {% endfor %}
-                <hr />
-            </div>
-            {% endfor %}
+<h1>Search</h1>
+<form action="{{ url_for('main.search') }}" method="get" role="search">
+    <div class="form-group">
+        <label for="term">Title or path</label>
+        <input class="form-control" id="term" name="term" value="{{ term }}" maxlength="100">
     </div>
-</div>
+    <button class="btn btn-primary" type="submit">Search</button>
+</form>
+<section aria-labelledby="results-title">
+    <h2 id="results-title">Results</h2>
+    {% for image in images %}
+    <article class="search-result">
+        <a href="{{ url_for('images.image_detail', image_id=image.image_id) }}">
+            <img src="{{ url_for('main.thumbnail', link=image.image_path, size='small') }}" alt="Thumbnail for {{ image.name }}" loading="lazy">
+            {{ image.name }}
+        </a>
+        <span>{{ (image.file_size or 0) // 1024 }} KiB</span>
+    </article>
+    {% else %}<p>No results.</p>{% endfor %}
+</section>
+{% if term %}
+<nav aria-label="Search result pages">
+    {% if page > 1 %}<a class="btn btn-default" href="{{ url_for('main.search', term=term, page=page-1) }}">Previous</a>{% endif %}
+    <span>Page {{ page }}</span>
+    {% if images|length == 30 %}<a class="btn btn-default" href="{{ url_for('main.search', term=term, page=page+1) }}">Next</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

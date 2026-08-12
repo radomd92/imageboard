@@ -1,77 +1,54 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="row">
-    <p><a href="/images/{{ image.image_id }}/edit">Edit this page</a></p>
-    <h2>{{ image.name }}</h2>
-    <div>
-        <div class="img-thumbnail">
-            <a href="/image_link/{{ image.image_path }}">
-                {% if image.image_path.split('.')[-1].lower() in 'jpg jpeg gif bmp tiff' %}
-                <img src="/image_link/{{ image.image_path }}" style="width:600px">
-                {% elif image.image_path.split('.')[-1].lower() in 'mpg mpeg mp4 m4v mov 3gp avi wmv' %}
-                <img src="/thumbnail/{{ image.image_path }}/large">
-                <br/>(Video thumbnail)
-                {% endif %}
-            </a>
-            <hr/>
-            <p>
-                {% for tag in image.tags %}
-                {% if 'set:' in tag.name %}
-                <a href="/tags/{{ tag.name }}"><span class="label label-info">{{ tag.name }}</span></a>
-                {% else %}
-                <a href="/tags/{{ tag.name }}"><span class="label label-default">{{ tag.name }}</span></a>
-                {% endif %}
-                {% endfor %}
-            </p>
-        </div>
+<article>
+    {% if current_user.is_admin %}<p><a href="{{ url_for('images.edit_image', image_id=image.image_id) }}">Edit metadata</a></p>{% endif %}
+    <h1>{{ image.name }}</h1>
+    <div class="media-frame">
+        {% set extension = image.image_path.rsplit('.', 1)[-1].lower() %}
+        {% if extension in ['avif', 'bmp', 'gif', 'jpeg', 'jpg', 'png', 'tif', 'tiff', 'webp'] %}
+        <a href="{{ url_for('main.media', link=image.image_path) }}">
+            <img class="detail-image" src="{{ url_for('main.media', link=image.image_path) }}" alt="{{ image.name }}">
+        </a>
+        {% else %}
+        <a href="{{ url_for('main.media', link=image.image_path) }}">
+            <img src="{{ url_for('main.thumbnail', link=image.image_path, size='large') }}" alt="Video thumbnail for {{ image.name }}">
+        </a>
+        <p><a href="{{ url_for('main.media', link=image.image_path) }}">Open video</a></p>
+        {% endif %}
+        <p>
+        {% for tag in image.tags %}
+            <a href="{{ url_for('main.get_images_tags', tag_name=tag.name) }}"><span class="label {{ 'label-info' if tag.name.startswith('set:') else 'label-default' }}">{{ tag.name }}</span></a>
+        {% else %}<span>No tags</span>{% endfor %}
+        </p>
+        <p>Added by {{ image.uploader or 'Unknown user' }}</p>
     </div>
 
-    <div>
-        <div>
-            {% if image.uploader == 'None' %}
-            <p>Unknown uploader</p>
-            {% else %}
-            <p>Added by {{ image.uploader }}</p>
-            {% endif %}
-        </div>
-
-        <div>
-            <div class="detailBox">
-                <div class="titleBox">
-                    <label>Comments</label>
-                    <button type="button" class="close" aria-hidden="true">&times;</button>
-                </div>
-                <div class="commentBox">
-                    <ul class="commentList">
-                        {% for comment in comments recursive %}
-                        Anonymous (<span class="date sub-text">{{ comment.message_date }}</span>)
-                        <div style="margin-left:25px;">
-                            <div class="commentText">
-                                <p class="">{{ comment.text }}</p>
-                                <form action="/images/{{ image.image_id }}/comment" method="post">
-                                    <div class="form-group">
-                                        <input class="form-control" style="display: inline;" name="comment" />
-                                        <button class="btn btn-default">Reply</button>
-                                        <input type="hidden" name='reply_to' value="{{ comment.message_id }}"/>
-                                    </div>
-                                </form>
-                                {{ loop(comment.replies) }}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </ul>
-                </div>
-                <form action="/images/{{ image.image_id }}/comment" method="post">
-                    <div class="form-group">
-                        <textarea class="form-control" name="comment"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <button class="btn btn-default">Add Comment</button>
-                    </div>
+    <section class="comments" aria-labelledby="comments-title">
+        <h2 id="comments-title">Comments</h2>
+        <ul class="comment-list">
+        {% for comment in comments recursive %}
+            <li>
+                <p><strong>{{ comment.from_user }}</strong> <small>{{ comment.message_date }}</small></p>
+                <p>{{ comment.text }}</p>
+                <form action="{{ url_for('images.add_user_comment', image_id=image.image_id) }}" method="post" class="reply-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="reply_to" value="{{ comment.message_id }}">
+                    <label class="sr-only" for="reply-{{ comment.message_id }}">Reply</label>
+                    <input class="form-control" id="reply-{{ comment.message_id }}" name="comment" maxlength="500" required>
+                    <button class="btn btn-default" type="submit">Reply</button>
                 </form>
+                {% if comment.replies %}<ul>{{ loop(comment.replies) }}</ul>{% endif %}
+            </li>
+        {% else %}<li>No comments yet.</li>{% endfor %}
+        </ul>
+        <form action="{{ url_for('images.add_user_comment', image_id=image.image_id) }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="comment">Add a comment</label>
+                <textarea class="form-control" id="comment" name="comment" maxlength="500" required></textarea>
             </div>
-        </div>
-    </div>
-</div>
-
+            <button class="btn btn-primary" type="submit">Add comment</button>
+        </form>
+    </section>
+</article>
 {% endblock %}

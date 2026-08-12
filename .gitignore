@@ -4,3 +4,12 @@
 /imageboard.sln
 /imageboard/imageboard.pyproj
 /imageboard/imageboard.pyproj.user
+/.env
+/.venv/
+/.pytest_cache/
+/.ruff_cache/
+/**/__pycache__/
+*.py[cod]
+*.sqlite3
+coverage.xml
+.coverage

@@ -1,126 +1,71 @@
-#load_module "/usr/lib/nginx/modules/ngx_http_xslt_filter_module.so";
-
-user pi;
+user nginx;
 worker_processes auto;
 pid /run/nginx.pid;
 
-
 events {
-    worker_connections 900;
-    multi_accept on;
+    worker_connections 512;
 }
 
 http {
-    proxy_cache_path /tmp/cache keys_zone=one:512m;
+    server_tokens off;
+    access_log /var/log/nginx/media_access.log combined;
+    error_log /var/log/nginx/media_error.log warn;
+
+    limit_req_zone $binary_remote_addr zone=media_requests:10m rate=20r/s;
+    limit_conn_zone $binary_remote_addr zone=media_connections:10m;
 
     server {
-        charset UTF-8;
-
-        # HTTPS is not mandatory but is strongly recommended. Front-end will skip the check and will not error if your
-        # certicate is not trusted.
-        listen 443 ssl;
         listen 8443 ssl;
-        listen [::]:443 ssl;
         listen [::]:8443 ssl;
+        server_name media-origin.example.internal;
 
-        # --- SSL Certificate is strongly recommended
-        ssl_certificate /path/to/.nginx/imageboard.cert;
-        ssl_certificate_key /path/to/.nginx/imageboard.key;
+        ssl_certificate /run/secrets/media-origin.crt;
+        ssl_certificate_key /run/secrets/media-origin.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_session_tickets off;
+        ssl_session_timeout 1d;
 
-        root /imagefolder;
+        disable_symlinks on from=$document_root;
+        client_max_body_size 1k;
+        limit_req zone=media_requests burst=40 nodelay;
+        limit_conn media_connections 20;
 
-        rewrite_log on;
-        access_log /tmp/ngx_access.log;
-        error_log /tmp/ngx_error.log;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy no-referrer always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; sandbox" always;
 
-        # ---- IMAGE FOLDERS: EDIT THIS FILE ----
-        location /imagefolder/ {
-            # Autoindex only shows when nginx can't file its own index files
-
-            # VERY important
+        # Restrict this listener at the firewall to the Flask application host.
+        location /images/ {
+            alias /srv/media/;
             autoindex on;
             autoindex_format json;
-
-            ## Uncomment this line if you want to explore the backend directly
-            # xslt_string_param title $1;
-            # xslt_stylesheet /path/to/template.xslt;
-
-            # kill cache
-            auth_basic "Please enter your credentials";
-            auth_basic_user_file /path/to/.htpasswd;
-
-            add_header Last-Modified $date_gmt;
-            add_header Cache-Control
-                'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
-            if_modified_since off;
-            expires off;
-            etag off;
+            auth_basic "Media origin";
+            auth_basic_user_file /run/secrets/media.htpasswd;
+            limit_except GET { deny all; }
         }
 
-        # ----- THUMBNAILS, IMAGE AND VIDEO -----
+        location ~ ^/images/(.+)§thumb§(large|small)$ {
+            auth_basic "Media origin";
+            auth_basic_user_file /run/secrets/media.htpasswd;
+            limit_except GET { deny all; }
 
-        # Original picture
-        location /_img/uploads {
-            alias /mnt$filename;
-            expires 20d;
-        }
-
-        # thumbnail
-        location ~* /(.+)§thumb§(large|small)$ {
-            set $filename /$1;
-
-            if (-f $filename) {
-                break;
+            set $source /$1;
+            set $width 110;
+            set $height 110;
+            if ($2 = large) {
+                set $width 220;
+                set $height 220;
             }
 
-            # Prepare the required parameters (width, height, cropping or zooming) according to the URL address!
-            set $img_version $2;
-            set $img_type resize;
-            set $img_w -;
-            set $img_h -;
-            if ($img_version = 'large' ) {
-                set $img_type crop;
-                set $img_w 220;
-                set $img_h 220;
-            }
-            if ($img_version = 'small' ) {
-                set $img_type crop;
-                set $img_w 110;
-                set $img_h 110;
-            }
-            rewrite ^ /_$img_type;
-        }
-
-        # Processing of Scaled Pictures
-        location /_resize {
-            alias /mnt$filename;
-            image_filter resize $img_w $img_h;
-            image_filter_jpeg_quality 95;
-            image_filter_buffer 100M;
+            alias /srv/media/$source;
+            image_filter crop $width $height;
+            image_filter_jpeg_quality 90;
+            image_filter_buffer 20M;
             image_filter_interlace on;
         }
 
-        # Processing of clipped pictures
-        location /_crop {
-            alias /mnt$filename;
-            image_filter crop $img_w $img_h;
-            image_filter_jpeg_quality 95;
-            image_filter_buffer 100M;
-            image_filter_interlace on;
-        }
-
-        location ~* /(.+)§vthumb$ {
-            auth_basic "Please enter your credentials to access";
-            auth_basic_user_file /this/folder/.nginx/.htpasswd;
-
-            video_thumbextractor;
-            video_thumbextractor_video_filename /$1;
-            video_thumbextractor_video_second 8;
-            video_thumbextractor_image_width 220;
-            video_thumbextractor_tile_sample_interval 30;
-            video_thumbextractor_image_height 220;
-            video_thumbextractor_tile_rows 1;
-            video_thumbextractor_tile_cols 1;
-        }
+        # Video thumbnail support requires a separately audited module. Keep it
+        # disabled unless ngx_http_video_thumbextractor_module is installed.
+        # location ~ ^/images/(.+)§vthumb$ { ... }
     }
 }
