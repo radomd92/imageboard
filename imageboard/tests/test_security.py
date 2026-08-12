@@ -24,6 +24,16 @@ def test_rate_limit_identity_ignores_spoofed_x_forwarded_for(app):
         app.config['TRUSTED_PROXY_NETWORKS'] = '127.0.0.1/32'
         assert rate_limit_identity() == 'ip:2.2.2.2'
 
+    with app.test_request_context(
+        '/',
+        environ_base={'REMOTE_ADDR': '127.0.0.1'},
+        headers={'X-Forwarded-For': '1.1.1.1'},
+    ):
+        # A single X-Forwarded-For value is client-controlled, so it must be
+        # ignored even when the request comes through a trusted proxy.
+        app.config['TRUSTED_PROXY_NETWORKS'] = '127.0.0.1/32'
+        assert rate_limit_identity() == 'ip:127.0.0.1'
+
 
 def test_private_by_default_and_security_headers(client):
     response = client.get('/')
