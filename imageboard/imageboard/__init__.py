@@ -37,10 +37,16 @@ def rate_limit_identity():
                 if network.strip()
             ]
             if any(remote_ip in network for network in networks):
-                # Trust the address added by the trusted reverse proxy (the
-                # right-most value), not the client-controllable left-most value.
-                forwarded = request.headers['X-Forwarded-For'].rsplit(',', 1)[-1].strip()
-                return f'ip:{ipaddress.ip_address(forwarded)}'
+                # Trust the address added by the trusted reverse proxy. That is
+                # the right-most value, but only when the proxy actually appended
+                # one (at least two values). A single value is client-controlled.
+                forwarded_values = [
+                    value.strip()
+                    for value in request.headers['X-Forwarded-For'].split(',')
+                    if value.strip()
+                ]
+                if len(forwarded_values) >= 2:
+                    return f'ip:{ipaddress.ip_address(forwarded_values[-1])}'
         except ValueError:
             pass
     return f'ip:{remote_address}'
