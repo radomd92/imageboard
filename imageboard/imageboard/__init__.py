@@ -42,7 +42,7 @@ def rate_limit_identity():
                 # one (at least two values). A single value is client-controlled.
                 forwarded_values = [
                     value.strip()
-                    for value in request.headers['X-Forwarded-For'].split(',')
+                    for value in request.headers.get('X-Forwarded-For', '').split(',')
                     if value.strip()
                 ]
                 if len(forwarded_values) >= 2:
