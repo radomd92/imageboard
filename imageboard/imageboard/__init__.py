@@ -1,5 +1,1 @@
-"""Paradise Imageboard FastAPI service."""
-
-from .api import app
-
-__all__ = ["app"]
+"""Paradise Imageboard migration and administration tooling."""

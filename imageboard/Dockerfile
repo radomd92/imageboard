@@ -13,12 +13,8 @@ RUN pip install --requirement requirements.txt
 
 COPY imageboard ./imageboard
 COPY migrations ./migrations
-COPY runserver.py ./
-COPY entrypoint.sh ./entrypoint.sh
-RUN chmod 755 ./entrypoint.sh
 
 USER imageboard
-EXPOSE 8000
 
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "runserver:app", "--worker-class=uvicorn.workers.UvicornWorker", "--bind=0.0.0.0:8000", "--workers=2", "--timeout=30", "--graceful-timeout=30", "--keep-alive=5", "--error-logfile=-"]
+ENTRYPOINT ["alembic"]
+CMD ["-c", "migrations/alembic.ini", "upgrade", "head"]

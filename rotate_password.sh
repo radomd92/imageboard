@@ -31,10 +31,10 @@ fi
 printf '%s\n' "$password" | "${compose[@]}" run --rm -T --entrypoint python migrator -c '
 import sys
 
-from sqlalchemy import select
-from werkzeug.security import generate_password_hash
+import os
 
-from imageboard.api import SessionLocal, User
+import psycopg
+from werkzeug.security import generate_password_hash
 
 username = sys.argv[1]
 password = sys.stdin.readline().rstrip("\n")
@@ -42,12 +42,15 @@ password = sys.stdin.readline().rstrip("\n")
 if len(password) < 14:
     raise SystemExit("Password must contain at least 14 characters")
 
-with SessionLocal() as session:
-    user = session.scalar(select(User).where(User.name == username))
-    if user is None:
+database_url = os.environ["IMAGEBOARD_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://", 1)
+with psycopg.connect(database_url) as connection, connection.cursor() as cursor:
+    cursor.execute('SELECT 1 FROM "user" WHERE name = %s', (username,))
+    if cursor.fetchone() is None:
         raise SystemExit("User not found")
-    user.password = generate_password_hash(password, method="scrypt")
-    session.commit()
+    cursor.execute(
+        'UPDATE "user" SET password = %s WHERE name = %s',
+        (generate_password_hash(password, method="scrypt"), username),
+    )
 ' "$username"
 
 unset password

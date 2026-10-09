@@ -1,6 +1,3 @@
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-
 [tool.ruff]
 line-length = 110
 target-version = "py311"
@@ -10,4 +7,4 @@ select = ["E", "F", "I", "S", "B"]
 ignore = ["B008", "E501", "S101", "S105", "S106", "S107"]
 
 [tool.bandit]
-exclude_dirs = ["tests", "imageboard/static"]
+exclude_dirs = ["imageboard/static"]

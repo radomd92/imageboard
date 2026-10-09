@@ -1,0 +1,99 @@
+html[data-theme="rorisu"] {
+  --bg-desktop: #e4e7ee;
+  --bg-menubar: #212121;
+  --bg-window: #fff;
+  --bg-sidebar: #fff;
+  --bg-workspace: #e4e7ee;
+  --bg-toolbar: linear-gradient(#fff, #eee);
+  --bg-statusbar: #d6dee5;
+  --bg-card: #fff;
+  --bg-panel: #fff;
+  --bg-panel-strong: #eee;
+  --bg-input: #fff;
+  --bg-button: linear-gradient(#fff, #f6f6f6);
+  --bg-hover: #d6dee5;
+  --bg-active: #212121;
+  --bg-active-ink: #fff;
+  --bg-notice: #fff0c8;
+  --bg-notice-error: #f6d0ca;
+  --backdrop: rgba(34, 34, 34, 0.55);
+  --bg-media: #1f2430;
+  --bg-media-alt: #212121;
+
+  --ink: #212121;
+  --muted: #777;
+  --ink-invert: #fff;
+  --line: #d6dee5;
+  --line-mid: #ccc;
+  --line-soft: #c4c4c4;
+  --line-hair: #ddd;
+  --accent: #47a0f0;
+  --accent-strong: #ff32b4;
+  --accent-soft: #d6dee5;
+  --green: #6b9a3e;
+  --positive: #4a8f3d;
+  --star: #ff32b4;
+  --star-bg: #ffffffe6;
+  --notice-ink: #8a5a00;
+  --notice-line: #e0a800;
+  --error-line: #c0392b;
+
+  --radius-window: 0.4em;
+  --radius-card: 0.3em;
+  --radius-control: 0.3em;
+  --radius-pill: 0.3em;
+  --border-window: 1px solid #d6dee5;
+  --shadow-window: 0 1px 10px rgba(0, 0, 0, 0.1);
+  --shadow-card: 0 1px 5px #ddd;
+  --shadow-card-hover: 0 1px 8px #ccc;
+  --shadow-control: 0 1px 2px #e3e3e3;
+
+  --titlebar-bg: linear-gradient(#fafafa, #f0f0f0);
+  --titlebar-border: 1px solid #d6dee5;
+  --titlebar-label-bg: transparent;
+  --titlebar-ink: #212121;
+  --titlebar-size: 13px;
+  --titlebar-weight: 400;
+  --titlebar-style: italic;
+  --close-bg: #fff;
+  --close-border: 1px solid #d6dee5;
+  --close-ink: #ff32b4;
+  --menubar-highlight: none;
+
+  --font-ui: Georgia, "Century Gothic", Verdana, Tahoma, Arial, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-size-base: 12px;
+  --heading-weight: 400;
+  --heading-style: italic;
+
+  --shadow: rgba(0, 0, 0, 0.1);
+  --blur: none;
+}
+
+html[data-theme="rorisu"] .menubar {
+  color: #fff;
+  border-bottom: 1px solid #000;
+}
+html[data-theme="rorisu"] .menubar span {
+  color: #d6dee5;
+}
+html[data-theme="rorisu"] .section-title {
+  border-bottom: 1px dashed #777;
+}
+html[data-theme="rorisu"] .brand-mark {
+  color: #fff;
+  background: #ff32b4;
+  border-color: #212121;
+}
+html[data-theme="rorisu"] .file,
+html[data-theme="rorisu"] .tag-card {
+  border-color: #ddd;
+}
+html[data-theme="rorisu"] .theme-options button.active,
+html[data-theme="rorisu"] nav button.active {
+  background: #212121;
+  color: #fff;
+}
+html[data-theme="rorisu"] .comment {
+  border-left-style: dashed;
+}

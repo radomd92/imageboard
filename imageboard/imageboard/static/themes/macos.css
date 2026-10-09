@@ -1,0 +1,135 @@
+html[data-theme="macos"] {
+  --bg-desktop: radial-gradient(
+    130% 110% at 50% 0%,
+    #7cb8f5 0%,
+    #2f6fcb 42%,
+    #16386f 78%,
+    #0b2145 100%
+  );
+  --bg-menubar: rgba(255, 255, 255, 0.7);
+  --bg-window: #ffffff;
+  --bg-sidebar: rgba(246, 246, 246, 0.82);
+  --bg-workspace: #ffffff;
+  --bg-toolbar: rgba(246, 246, 246, 0.9);
+  --bg-statusbar: #f5f5f7;
+  --bg-card: #ffffff;
+  --bg-panel: #f5f5f7;
+  --bg-panel-strong: #ececf0;
+  --bg-input: #ffffff;
+  --bg-button: linear-gradient(#ffffff, #f2f2f7);
+  --bg-hover: #ececf0;
+  --bg-active: #0a84ff;
+  --bg-active-ink: #ffffff;
+  --bg-notice: #fff8e1;
+  --bg-notice-error: #ffebe7;
+  --backdrop: rgba(0, 0, 0, 0.45);
+  --bg-media: #1c1c1e;
+  --bg-media-alt: #2c2c2e;
+
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --ink-invert: #ffffff;
+  --line: #d2d2d7;
+  --line-mid: #d2d2d7;
+  --line-soft: #d8d8dc;
+  --line-hair: #e5e5ea;
+  --accent: #0a84ff;
+  --accent-strong: #0060df;
+  --accent-soft: #e5f1ff;
+  --green: #34c759;
+  --positive: #1f8f4d;
+  --star: #ffcc00;
+  --star-bg: #ffffffe6;
+  --notice-ink: #8a5a00;
+  --notice-line: #e0a800;
+  --error-line: #d70015;
+
+  --radius-window: 12px;
+  --radius-card: 10px;
+  --radius-control: 8px;
+  --radius-pill: 999px;
+  --border-window: 1px solid rgba(0, 0, 0, 0.12);
+  --shadow-window:
+    0 24px 60px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.18);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.07);
+  --shadow-card-hover: 0 6px 18px rgba(0, 0, 0, 0.16);
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.12);
+
+  --titlebar-bg: linear-gradient(#fbfbfd, #f2f2f7);
+  --titlebar-border: 1px solid rgba(0, 0, 0, 0.08);
+  --titlebar-label-bg: transparent;
+  --titlebar-ink: #1d1d1f;
+  --titlebar-size: 13px;
+  --titlebar-weight: 600;
+  --titlebar-style: normal;
+  --close-bg: transparent;
+  --close-border: 0;
+  --close-ink: transparent;
+  --menubar-highlight: inset 0 1px rgba(255, 255, 255, 0.7);
+
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  --font-size-base: 13px;
+  --heading-weight: 700;
+  --heading-style: normal;
+
+  --shadow: rgba(0, 0, 0, 0.3);
+  --blur: blur(22px) saturate(180%);
+}
+
+html[data-theme="macos"] .app-window .titlebar > i:first-child {
+  width: 42px;
+  height: 12px;
+  border-radius: 6px;
+  background:
+    radial-gradient(
+      circle at 6px 6px,
+      #ff5f57 5px,
+      rgba(0, 0, 0, 0.12) 5.5px,
+      transparent 6px
+    ),
+    radial-gradient(
+      circle at 21px 6px,
+      #febc2e 5px,
+      rgba(0, 0, 0, 0.12) 5.5px,
+      transparent 6px
+    ),
+    radial-gradient(
+      circle at 36px 6px,
+      #28c840 5px,
+      rgba(0, 0, 0, 0.12) 5.5px,
+      transparent 6px
+    );
+}
+html[data-theme="macos"] .app-window .titlebar > i:last-child {
+  visibility: hidden;
+}
+html[data-theme="macos"] .close-box {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ff5f57;
+  color: transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+html[data-theme="macos"] .menubar {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+html[data-theme="macos"] .brand-mark,
+html[data-theme="macos"] nav button.active {
+  box-shadow: none;
+}
+html[data-theme="macos"] .theme-options button.active,
+html[data-theme="macos"] nav button.active {
+  background: #0a84ff;
+  color: #fff;
+}
+html[data-theme="macos"] .modal {
+  border-radius: 12px;
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -13,13 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func (a *application) listImages(w http.ResponseWriter, r *http.Request, _ user) {
+func (a *application) listImages(w http.ResponseWriter, r *http.Request, currentUser user) {
 	query := r.URL.Query()
 	searchTerm := query.Get("q")
 	tagName := query.Get("tag")
@@ -49,6 +51,10 @@ func (a *application) listImages(w http.ResponseWriter, r *http.Request, _ user)
 	if query.Get("untagged") == "true" {
 		filters = append(filters, "NOT EXISTS (SELECT 1 FROM tag_image ti WHERE ti.image = i.id)")
 	}
+	if query.Get("favorite") == "true" {
+		placeholder := addArgument(currentUser.ID)
+		filters = append(filters, "EXISTS (SELECT 1 FROM image_favorite favorite WHERE favorite.image_id = i.id AND favorite.user_id = "+placeholder+")")
+	}
 	whereClause := strings.Join(filters, " AND ")
 	var total int64
 	if err := a.pool.QueryRow(r.Context(), "SELECT count(*) FROM image i WHERE "+whereClause, arguments...).Scan(&total); err != nil {
@@ -62,7 +68,7 @@ FROM image i LEFT JOIN "user" u ON u.id = i.uploader WHERE `+whereClause+` ORDER
 		writeError(w, 500, "Database unavailable")
 		return
 	}
-	images, err := a.scanImages(r.Context(), rows)
+	images, err := a.scanImages(r.Context(), rows, currentUser.ID)
 	if err != nil {
 		writeError(w, 500, "Database unavailable")
 		return
@@ -70,12 +76,12 @@ FROM image i LEFT JOIN "user" u ON u.id = i.uploader WHERE `+whereClause+` ORDER
 	writeJSON(w, http.StatusOK, map[string]any{"items": images, "page": page, "limit": limit, "total": total})
 }
 
-func (a *application) getImage(w http.ResponseWriter, r *http.Request, _ user) {
+func (a *application) getImage(w http.ResponseWriter, r *http.Request, currentUser user) {
 	id, ok := pathID(w, r)
 	if !ok {
 		return
 	}
-	image, err := a.imageByID(r.Context(), id)
+	image, err := a.imageByID(r.Context(), id, currentUser.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "Image not found")
 		return
@@ -87,13 +93,13 @@ func (a *application) getImage(w http.ResponseWriter, r *http.Request, _ user) {
 	writeJSON(w, http.StatusOK, image)
 }
 
-func (a *application) imageByID(ctx context.Context, id int32) (image, error) {
+func (a *application) imageByID(ctx context.Context, id, userID int32) (image, error) {
 	rows, err := a.pool.Query(ctx, `SELECT i.id, i.name, i.image_path, i.created_date, i.file_size, i.hits, u.name
 FROM image i LEFT JOIN "user" u ON u.id = i.uploader WHERE i.id = $1`, id)
 	if err != nil {
 		return image{}, err
 	}
-	images, err := a.scanImages(ctx, rows)
+	images, err := a.scanImages(ctx, rows, userID)
 	if err != nil {
 		return image{}, err
 	}
@@ -103,7 +109,7 @@ FROM image i LEFT JOIN "user" u ON u.id = i.uploader WHERE i.id = $1`, id)
 	return images[0], nil
 }
 
-func (a *application) scanImages(ctx context.Context, rows pgx.Rows) ([]image, error) {
+func (a *application) scanImages(ctx context.Context, rows pgx.Rows, userID int32) ([]image, error) {
 	defer rows.Close()
 	images := []image{}
 	imageIDs := []int32{}
@@ -169,6 +175,24 @@ FROM message m LEFT JOIN "user" u ON u.id = m.from_user WHERE m.image = ANY($1) 
 		return nil, err
 	}
 	commentRows.Close()
+
+	favoriteRows, err := a.pool.Query(ctx, "SELECT image_id FROM image_favorite WHERE user_id = $1 AND image_id = ANY($2)", userID, imageIDs)
+	if err != nil {
+		return nil, err
+	}
+	for favoriteRows.Next() {
+		var imageID int32
+		if err := favoriteRows.Scan(&imageID); err != nil {
+			favoriteRows.Close()
+			return nil, err
+		}
+		imagesByID[imageID].Favorite = true
+	}
+	if err := favoriteRows.Err(); err != nil {
+		favoriteRows.Close()
+		return nil, err
+	}
+	favoriteRows.Close()
 	return images, nil
 }
 
@@ -266,7 +290,14 @@ func (a *application) explore(w http.ResponseWriter, r *http.Request, _ user) {
 			result = append(result, entry{Name: directoryEntry.Name(), Path: path, Type: "directory"})
 			continue
 		}
-		if !info.Mode().IsRegular() || !supportedMedia(directoryEntry.Name()) {
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if supportedDocument(directoryEntry.Name()) {
+			result = append(result, entry{Name: directoryEntry.Name(), Path: path, Type: "document"})
+			continue
+		}
+		if !supportedMedia(directoryEntry.Name()) {
 			continue
 		}
 		kind, size := mediaKind(directoryEntry.Name()), info.Size()
@@ -306,6 +337,51 @@ func (a *application) explore(w http.ResponseWriter, r *http.Request, _ user) {
 		return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
 	})
 	writeJSON(w, 200, map[string]any{"path": canonical, "entries": result})
+}
+
+const maxDocumentBytes = 1 << 20
+
+// readDocument returns source text only. The browser never receives HTML as a document response.
+func (a *application) readDocument(w http.ResponseWriter, r *http.Request, _ user) {
+	requestedPath := r.URL.Query().Get("path")
+	if len(requestedPath) > 4096 {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid document path")
+		return
+	}
+	canonicalPath, err := canonicalPath(requestedPath, false)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "Invalid document path")
+		return
+	}
+	document, err := a.existingPath(canonicalPath)
+	if err != nil || !document.info.Mode().IsRegular() || !supportedDocument(document.info.Name()) {
+		writeError(w, http.StatusNotFound, "Document not found")
+		return
+	}
+	file, err := os.Open(document.path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "Document not found")
+		return
+	}
+	defer func() { _ = file.Close() }()
+	content, err := io.ReadAll(io.LimitReader(file, maxDocumentBytes+1))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Unable to read document")
+		return
+	}
+	truncated := len(content) > maxDocumentBytes
+	if truncated {
+		content = content[:maxDocumentBytes]
+	}
+	if !utf8.Valid(content) {
+		writeError(w, http.StatusUnprocessableEntity, "Document is not UTF-8 text")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":      canonicalPath,
+		"content":   string(content),
+		"truncated": truncated,
+	})
 }
 
 func (a *application) enqueueSingle(w http.ResponseWriter, r *http.Request, user user) {
@@ -462,6 +538,50 @@ func (a *application) getImageFile(w http.ResponseWriter, r *http.Request, user 
 	http.Redirect(w, r, a.mediaPath(path), http.StatusTemporaryRedirect)
 }
 
+func (a *application) favoriteImage(w http.ResponseWriter, r *http.Request, currentUser user) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	command, err := a.pool.Exec(r.Context(), `
+INSERT INTO image_favorite (user_id, image_id)
+SELECT $1, $2
+WHERE EXISTS (SELECT 1 FROM image WHERE id = $2)
+ON CONFLICT (user_id, image_id) DO NOTHING`, currentUser.ID, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Database unavailable")
+		return
+	}
+	if command.RowsAffected() == 0 {
+		var exists bool
+		if err := a.pool.QueryRow(r.Context(), "SELECT EXISTS (SELECT 1 FROM image WHERE id = $1)", id).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusNotFound, "Image not found")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"favorite": true})
+}
+
+func (a *application) unfavoriteImage(w http.ResponseWriter, r *http.Request, currentUser user) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	command, err := a.pool.Exec(r.Context(), "DELETE FROM image_favorite WHERE user_id = $1 AND image_id = $2", currentUser.ID, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Database unavailable")
+		return
+	}
+	if command.RowsAffected() == 0 {
+		var exists bool
+		if err := a.pool.QueryRow(r.Context(), "SELECT EXISTS (SELECT 1 FROM image WHERE id = $1)", id).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusNotFound, "Image not found")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"favorite": false})
+}
+
 func (a *application) contextUpdate(w http.ResponseWriter, r *http.Request, user user) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -483,7 +603,7 @@ func (a *application) contextUpdate(w http.ResponseWriter, r *http.Request, user
 		writeError(w, 500, "Database unavailable")
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 	var exists int32
 	if err := tx.QueryRow(r.Context(), "SELECT id FROM image WHERE id = $1", id).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "Image not found")
@@ -541,7 +661,7 @@ func (a *application) contextUpdate(w http.ResponseWriter, r *http.Request, user
 		writeError(w, 500, "Database unavailable")
 		return
 	}
-	item, err := a.imageByID(r.Context(), id)
+	item, err := a.imageByID(r.Context(), id, user.ID)
 	if err != nil {
 		writeError(w, 500, "Database unavailable")
 		return
@@ -575,7 +695,7 @@ func (a *application) updateImage(w http.ResponseWriter, r *http.Request, user u
 		return
 	}
 	_, _ = a.pool.Exec(r.Context(), "INSERT INTO audit_event (actor_id, action, object_type, object_id, created_at) VALUES ($1, 'edit_title', 'image', $2, NOW())", user.ID, strconv.Itoa(int(id)))
-	item, err := a.imageByID(r.Context(), id)
+	item, err := a.imageByID(r.Context(), id, user.ID)
 	if err != nil {
 		writeError(w, 500, "Database unavailable")
 		return
@@ -627,7 +747,7 @@ func (a *application) addComment(w http.ResponseWriter, r *http.Request, user us
 		writeError(w, 404, "Image not found")
 		return
 	}
-	item, err := a.imageByID(r.Context(), id)
+	item, err := a.imageByID(r.Context(), id, user.ID)
 	if err != nil {
 		writeError(w, 500, "Database unavailable")
 		return
@@ -649,7 +769,7 @@ func encodedPath(path string) string {
 
 func mediaKind(path string) string {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".avi", ".m4v", ".mov", ".mp4", ".webm", ".wmv":
+	case ".avi", ".m4v", ".mpe", ".mpeg", ".mpg", ".mov", ".mp4", ".webm", ".wmv":
 		return "video"
 	default:
 		return "image"
@@ -658,7 +778,16 @@ func mediaKind(path string) string {
 
 func supportedMedia(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
-	case ".avif", ".avi", ".bmp", ".gif", ".jpeg", ".jpg", ".m4v", ".mov", ".mp4", ".png", ".tif", ".tiff", ".webm", ".webp", ".wmv":
+	case ".avif", ".avi", ".bmp", ".gif", ".jpeg", ".jpg", ".m4v", ".mpe", ".mpeg", ".mpg", ".mov", ".mp4", ".png", ".tif", ".tiff", ".webm", ".webp", ".wmv":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportedDocument(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".htm", ".html", ".log", ".md", ".text", ".txt":
 		return true
 	default:
 		return false

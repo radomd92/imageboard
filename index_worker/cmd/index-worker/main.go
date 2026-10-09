@@ -273,7 +273,7 @@ func (w *worker) upsertBatch(ctx context.Context, job job, files []mediaFile, co
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	rows, err := tx.Query(ctx, "SELECT image_path, file_size FROM image WHERE image_path = ANY($1)", paths)
 	if err != nil {
@@ -424,7 +424,7 @@ func safeParts(parts []string) bool {
 func supportedMedia(name string) bool {
 	extension := strings.ToLower(filepath.Ext(name))
 	switch extension {
-	case ".avif", ".avi", ".bmp", ".gif", ".jpeg", ".jpg", ".m4v", ".mov", ".mp4", ".png", ".tif", ".tiff", ".webm", ".webp", ".wmv":
+	case ".avif", ".avi", ".bmp", ".gif", ".jpeg", ".jpg", ".m4v", ".mpe", ".mpeg", ".mpg", ".mov", ".mp4", ".png", ".tif", ".tiff", ".webm", ".webp", ".wmv":
 		return true
 	default:
 		return false

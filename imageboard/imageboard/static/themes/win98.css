@@ -1,0 +1,171 @@
+html[data-theme="win98"] {
+  --bg-desktop: #008080;
+  --bg-menubar: #c0c0c0;
+  --bg-window: #c0c0c0;
+  --bg-sidebar: #c0c0c0;
+  --bg-workspace: #c0c0c0;
+  --bg-toolbar: #c0c0c0;
+  --bg-statusbar: #c0c0c0;
+  --bg-card: #c0c0c0;
+  --bg-panel: #c0c0c0;
+  --bg-panel-strong: #c0c0c0;
+  --bg-input: #ffffff;
+  --bg-button: #c0c0c0;
+  --bg-hover: #d4d0c8;
+  --bg-active: #000080;
+  --bg-active-ink: #ffffff;
+  --bg-notice: #ffffe1;
+  --bg-notice-error: #ffe4e1;
+  --backdrop: rgba(0, 0, 0, 0.35);
+  --bg-media: #000000;
+  --bg-media-alt: #000000;
+  --badge-bg: #000080;
+  --ink-media: #ffffff;
+
+  --ink: #000000;
+  --muted: #444444;
+  --ink-invert: #ffffff;
+  --line: #808080;
+  --line-mid: #808080;
+  --line-soft: #808080;
+  --line-hair: #dfdfdf;
+  --accent: #000080;
+  --accent-strong: #000080;
+  --accent-soft: #d4d0c8;
+  --green: #008000;
+  --positive: #006400;
+  --star: #ffd700;
+  --star-bg: #ffffe1;
+  --notice-ink: #7a5200;
+  --notice-line: #9a7b00;
+  --error-line: #a00000;
+
+  --radius-window: 0;
+  --radius-card: 0;
+  --radius-control: 0;
+  --radius-pill: 0;
+  --border-window: 2px outset #dfdfdf;
+  --shadow-window: 3px 3px 0 rgba(0, 0, 0, 0.25);
+  --shadow-card:
+    inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080,
+    inset 2px 2px #dfdfdf;
+  --shadow-card-hover: var(--shadow-card);
+  --shadow-control:
+    inset -1px -1px #0a0a0a, inset 1px 1px #ffffff, inset -2px -2px #808080,
+    inset 2px 2px #dfdfdf;
+
+  --titlebar-bg: linear-gradient(90deg, #000080 0%, #1084d0 100%);
+  --titlebar-border: 1px solid #a0a0a0;
+  --titlebar-label-bg: transparent;
+  --titlebar-ink: #ffffff;
+  --titlebar-size: 12px;
+  --titlebar-weight: 700;
+  --titlebar-style: normal;
+  --close-bg: #c0c0c0;
+  --close-border: 0;
+  --close-ink: #000000;
+  --menubar-highlight: inset -1px -1px #808080, inset 1px 1px #ffffff;
+
+  --font-ui:
+    "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, Verdana, sans-serif;
+  --font-display:
+    "MS Sans Serif", "Microsoft Sans Serif", Tahoma, Geneva, Verdana, sans-serif;
+  --font-size-base: 12px;
+  --heading-weight: 700;
+  --heading-style: normal;
+
+  --shadow: rgba(0, 0, 0, 0.25);
+  --blur: none;
+}
+
+html[data-theme="win98"] .menubar {
+  border-bottom: 1px solid #dfdfdf;
+  gap: 14px;
+}
+html[data-theme="win98"] .titlebar {
+  border-left: 1px solid #dfdfdf;
+  border-right: 1px solid #dfdfdf;
+  border-top: 1px solid #dfdfdf;
+}
+html[data-theme="win98"] .close-box {
+  width: 16px;
+  height: 14px;
+  line-height: 10px;
+  border: 0;
+  background: #c0c0c0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #ffffff,
+    inset -2px -2px #808080,
+    inset 2px 2px #dfdfdf;
+}
+html[data-theme="win98"] .sidebar {
+  border-right: 1px solid #808080;
+}
+html[data-theme="win98"] .toolbar {
+  border-bottom: 1px solid #808080;
+}
+html[data-theme="win98"] .brand {
+  border-bottom: 1px solid #808080;
+}
+html[data-theme="win98"] .user-panel {
+  border-top: 1px solid #808080;
+}
+html[data-theme="win98"] .brand-mark {
+  box-shadow: none;
+}
+html[data-theme="win98"] .button:active,
+html[data-theme="win98"] .history button:active,
+html[data-theme="win98"] .theme-options button:active {
+  transform: none;
+  box-shadow:
+    inset 1px 1px #0a0a0a,
+    inset -1px -1px #ffffff,
+    inset 2px 2px #808080,
+    inset -2px -2px #dfdfdf;
+}
+html[data-theme="win98"] nav button.active,
+html[data-theme="win98"] .theme-options button.active {
+  box-shadow:
+    inset 1px 1px #0a0a0a,
+    inset -1px -1px #ffffff;
+}
+html[data-theme="win98"] .section-title {
+  border-bottom: 1px solid #808080;
+}
+html[data-theme="win98"] .stat,
+html[data-theme="win98"] .media-card,
+html[data-theme="win98"] .tag-card {
+  background: #c0c0c0;
+}
+html[data-theme="win98"] .media-card:hover {
+  transform: none;
+}
+html[data-theme="win98"] .file-preview {
+  background: #000000;
+  border-color: #808080;
+}
+html[data-theme="win98"] .search input,
+html[data-theme="win98"] .edit-form input,
+html[data-theme="win98"] .edit-form textarea {
+  border: 1px solid #808080;
+  border-radius: 0;
+}
+html[data-theme="win98"] .info-table,
+html[data-theme="win98"] .edit-form,
+html[data-theme="win98"] .comment {
+  background: #c0c0c0;
+}
+html[data-theme="win98"] .info-row span:first-child {
+  background: #d4d0c8;
+}
+html[data-theme="win98"] .favorite-toggle {
+  border-radius: 0;
+  background: #ffffe1;
+}
+html[data-theme="win98"] .document-content {
+  background: #ffffff;
+}
+html[data-theme="win98"] .index-btn {
+  background: #c0c0c0;
+}

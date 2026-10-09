@@ -25,13 +25,15 @@ import (
 )
 
 type config struct {
-	databaseURL  string
-	mediaRoot    string
-	mediaURL     string
-	healthToken  string
-	staticRoot   string
-	authTTL      time.Duration
-	authCacheKey []byte
+	databaseURL            string
+	mediaRoot              string
+	mediaURL               string
+	healthToken            string
+	staticRoot             string
+	authTTL                time.Duration
+	authCacheKey           []byte
+	thumbnailEncryptionKey [32]byte
+	thumbnailCacheKey      [32]byte
 }
 
 type user struct {
@@ -67,6 +69,7 @@ type image struct {
 	Uploader  *string   `json:"uploader"`
 	Tags      []string  `json:"tags"`
 	Comments  []comment `json:"comments"`
+	Favorite  bool      `json:"favorite"`
 }
 
 type comment struct {
@@ -123,32 +126,37 @@ func main() {
 }
 
 func (a *application) routes() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/health/live", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	router := chi.NewRouter()
+	router.Get("/health/live", func(response http.ResponseWriter, _ *http.Request) {
+		writeJSON(response, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	r.Get("/health/ready", a.ready)
-	r.Get("/", a.withAuth(a.index))
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir(a.config.staticRoot))))
-	r.Route("/api", func(r chi.Router) {
-		r.Get("/internal/authorize", a.withAuth(a.authorizeMedia))
-		r.Get("/me", a.withAuth(a.me))
-		r.Get("/images", a.withAuth(a.listImages))
-		r.Get("/tags", a.withAuth(a.listTags))
-		r.Get("/dashboard", a.withAuth(a.dashboard))
-		r.Get("/explore", a.withAdmin(a.explore))
-		r.Post("/images/index", a.withAdmin(a.enqueueSingle))
-		r.Post("/images/index-tree", a.withAdmin(a.enqueueTree))
-		r.Post("/index-jobs", a.withAdmin(a.createJob))
-		r.Get("/index-jobs/{id}", a.withAdmin(a.getJob))
-		r.Post("/index-jobs/{id}/cancel", a.withAdmin(a.cancelJob))
-		r.Get("/images/{id}", a.withAuth(a.getImage))
-		r.Get("/images/{id}/file", a.withAuth(a.getImageFile))
-		r.Post("/images/{id}/context", a.withAuth(a.contextUpdate))
-		r.Patch("/images/{id}", a.withAdmin(a.updateImage))
-		r.Post("/images/{id}/comments", a.withAuth(a.addComment))
+	router.Get("/health/ready", a.ready)
+	router.Get("/", a.withAuth(a.index))
+	router.Get("/thumbnail/*", a.withAuth(a.thumbnail))
+	router.Method(http.MethodHead, "/thumbnail/*", a.withAuth(a.thumbnail))
+	router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir(a.config.staticRoot))))
+	router.Route("/api", func(apiRouter chi.Router) {
+		apiRouter.Get("/internal/authorize", a.withAuth(a.authorizeMedia))
+		apiRouter.Get("/me", a.withAuth(a.me))
+		apiRouter.Get("/images", a.withAuth(a.listImages))
+		apiRouter.Get("/tags", a.withAuth(a.listTags))
+		apiRouter.Get("/dashboard", a.withAuth(a.dashboard))
+		apiRouter.Get("/explore", a.withAdmin(a.explore))
+		apiRouter.Get("/documents/read", a.withAdmin(a.readDocument))
+		apiRouter.Post("/images/index", a.withAdmin(a.enqueueSingle))
+		apiRouter.Post("/images/index-tree", a.withAdmin(a.enqueueTree))
+		apiRouter.Post("/index-jobs", a.withAdmin(a.createJob))
+		apiRouter.Get("/index-jobs/{id}", a.withAdmin(a.getJob))
+		apiRouter.Post("/index-jobs/{id}/cancel", a.withAdmin(a.cancelJob))
+		apiRouter.Get("/images/{id}", a.withAuth(a.getImage))
+		apiRouter.Put("/images/{id}/favorite", a.withAuth(a.favoriteImage))
+		apiRouter.Delete("/images/{id}/favorite", a.withAuth(a.unfavoriteImage))
+		apiRouter.Get("/images/{id}/file", a.withAuth(a.getImageFile))
+		apiRouter.Post("/images/{id}/context", a.withAuth(a.contextUpdate))
+		apiRouter.Patch("/images/{id}", a.withAdmin(a.updateImage))
+		apiRouter.Post("/images/{id}/comments", a.withAuth(a.addComment))
 	})
-	return a.securityHeaders(r)
+	return a.securityHeaders(router)
 }
 
 func (a *application) securityHeaders(next http.Handler) http.Handler {
@@ -231,15 +239,15 @@ func (a *application) verifyPassword(encoded, password string) bool {
 	if len(params) != 3 {
 		return false
 	}
-	n, nErr := strconv.Atoi(params[0])
-	r, rErr := strconv.Atoi(params[1])
-	p, pErr := strconv.Atoi(params[2])
+	cost, costErr := strconv.Atoi(params[0])
+	blockSize, blockSizeErr := strconv.Atoi(params[1])
+	parallelism, parallelismErr := strconv.Atoi(params[2])
 	digest, decodeErr := hex.DecodeString(parts[2])
-	if nErr != nil || rErr != nil || pErr != nil || n < 2 || n > 32768 || r < 1 || r > 16 || p < 1 || p > 4 || decodeErr != nil {
+	if costErr != nil || blockSizeErr != nil || parallelismErr != nil || cost < 2 || cost > 32768 || blockSize < 1 || blockSize > 16 || parallelism < 1 || parallelism > 4 || decodeErr != nil {
 		return false
 	}
 	a.scryptSem <- struct{}{}
-	derived, err := scrypt.Key([]byte(password), []byte(parts[1]), n, r, p, len(digest))
+	derived, err := scrypt.Key([]byte(password), []byte(parts[1]), cost, blockSize, parallelism, len(digest))
 	<-a.scryptSem
 	return err == nil && subtle.ConstantTimeCompare(derived, digest) == 1
 }
@@ -317,19 +325,26 @@ func fatal(err error) {
 }
 
 func loadConfig() config {
-	secret := os.Getenv("IMAGEBOARD_SECRET_KEY")
-	if secret == "" {
-		secret = randomID()
-	}
+	secret := requiredEnv("IMAGEBOARD_SECRET_KEY")
 	return config{
-		databaseURL:  normalizeDatabaseURL(requiredEnv("IMAGEBOARD_DATABASE_URL")),
-		mediaRoot:    requiredEnv("IMAGEBOARD_MEDIA_ROOT"),
-		mediaURL:     env("IMAGEBOARD_MEDIA_URL", "/media"),
-		healthToken:  os.Getenv("IMAGEBOARD_HEALTH_TOKEN"),
-		staticRoot:   env("IMAGEBOARD_STATIC_ROOT", "/static"),
-		authTTL:      time.Duration(envInt("AUTH_CACHE_SECONDS", 20)) * time.Second,
-		authCacheKey: []byte(secret),
+		databaseURL:            normalizeDatabaseURL(requiredEnv("IMAGEBOARD_DATABASE_URL")),
+		mediaRoot:              requiredEnv("IMAGEBOARD_MEDIA_ROOT"),
+		mediaURL:               env("IMAGEBOARD_MEDIA_URL", "/media"),
+		healthToken:            os.Getenv("IMAGEBOARD_HEALTH_TOKEN"),
+		staticRoot:             env("IMAGEBOARD_STATIC_ROOT", "/static"),
+		authTTL:                time.Duration(envInt("AUTH_CACHE_SECONDS", 20)) * time.Second,
+		authCacheKey:           []byte(secret),
+		thumbnailEncryptionKey: derivedKey(secret, "thumbnail encryption v1"),
+		thumbnailCacheKey:      derivedKey(secret, "thumbnail cache key v1"),
 	}
+}
+
+func derivedKey(secret, label string) [32]byte {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(label))
+	var key [32]byte
+	copy(key[:], mac.Sum(nil))
+	return key
 }
 
 func requiredEnv(name string) string {
@@ -359,17 +374,11 @@ func normalizeDatabaseURL(value string) string {
 	return strings.Replace(value, "postgresql+psycopg://", "postgres://", 1)
 }
 
-func randomID() string {
-	bytes := make([]byte, 16)
-	_, _ = rand.Read(bytes)
-	return hex.EncodeToString(bytes)
-}
-
 func uuid() string {
-	bytes := make([]byte, 16)
-	_, _ = rand.Read(bytes)
-	bytes[6] = bytes[6]&0x0f | 0x40
-	bytes[8] = bytes[8]&0x3f | 0x80
-	encoded := hex.EncodeToString(bytes)
+	randomBytes := make([]byte, 16)
+	_, _ = rand.Read(randomBytes)
+	randomBytes[6] = randomBytes[6]&0x0f | 0x40
+	randomBytes[8] = randomBytes[8]&0x3f | 0x80
+	encoded := hex.EncodeToString(randomBytes)
 	return encoded[0:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:]
 }

@@ -12,7 +12,7 @@ func TestSafePartsRejectsTraversalAndConfidentialityHazards(t *testing.T) {
 }
 
 func TestSupportedMedia(t *testing.T) {
-	if !supportedMedia("example.JPEG") || !supportedMedia("movie.webm") {
+	if !supportedMedia("example.JPEG") || !supportedMedia("movie.webm") || !supportedMedia("movie.mpg") {
 		t.Fatal("supported extensions rejected")
 	}
 	if supportedMedia("notes.txt") || supportedMedia("no-extension") {

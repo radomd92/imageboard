@@ -1,6 +1,6 @@
 # Paradise Imageboard
 
-Private Go media catalog. PostgreSQL stores image metadata, tags, comments, and users. Nginx directly serves mounted read-only media and generates image thumbnails. PostgreSQL and the application run as separate Compose projects so application redeployments cannot replace or remove the database service. A separate Go worker indexes media asynchronously through PostgreSQL-backed durable jobs.
+Private Go media catalog. PostgreSQL stores image metadata, tags, comments, users, and AES-256-GCM encrypted generated thumbnails. Nginx directly serves mounted read-only media; Go generates thumbnails and stores only encrypted blobs in PostgreSQL. PostgreSQL and the application run as separate Compose projects so application redeployments cannot replace or remove the database service. A separate Go worker indexes media asynchronously through PostgreSQL-backed durable jobs. Python is retained only for Alembic migrations and local account administration; it serves no HTTP API.
 
 ## Deploy
 
@@ -13,7 +13,7 @@ Private Go media catalog. PostgreSQL stores image metadata, tags, comments, and 
    docker compose -p imageboard-database -f docker-compose.database.yml up -d
    ```
 
-3. After PostgreSQL is healthy, build and start the application deployment. The one-shot `migrator` service applies Alembic migrations before the Go index worker starts.
+3. After PostgreSQL is healthy, build and start the application deployment. The one-shot `migrator` service applies Alembic migrations before the Go API and Go index worker start.
 
    ```bash
    docker compose up -d --build
@@ -44,6 +44,17 @@ INDEX_INSECURE=1 python3 index_all.py
 ```
 
 `INDEX_INSECURE=1` is needed only for a self-signed local TLS certificate. Set `INDEX_API_URL` for another endpoint, and `IMAGEBOARD_USER` / `IMAGEBOARD_PASSWORD` for non-interactive use. The Tor endpoint remains read-only and cannot submit jobs.
+
+## Local image descriptions
+
+`describe_image.py` downloads one HTTP(S) image and sends it to a loopback-only vision model endpoint. It uses only the Python standard library and prints JSON with a concise description and normalized catalog-ready tags.
+
+```bash
+python3 describe_image.py 'https://example.invalid/image.jpg' --model gemma3
+python3 describe_image.py 'https://example.invalid/image.jpg' --api openai --model gemma3 --endpoint http://127.0.0.1:11434/v1/chat/completions
+```
+
+The default is Ollama at `http://127.0.0.1:11434/api/generate`. The script rejects model endpoints that resolve outside loopback addresses, caps downloads at 20 MiB, and never prints the source URL or image bytes.
 
 ## Password Rotation
 
@@ -96,4 +107,4 @@ curl --user user:password -X POST https://host:8443/api/images/42/context \
 
 `GET /api/images/{id}` returns image metadata, tags, comments, and direct media URL. `GET /api/images/{id}/file` increments view count then redirects to protected Nginx media. `POST /api/images/{id}/context` replaces tags when `tags` supplied and appends comment when `comment` supplied.
 
-Nginx rejects writes, hides directory indexes, disables symlinks, authenticates each media request through the Go API, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled: Nginx image filter supports images only; do not install unreviewed video-thumbnail modules.
+Nginx rejects writes, hides directory indexes, disables symlinks, authenticates each media request through the Go API, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled; the Go thumbnail cache generates image previews only.

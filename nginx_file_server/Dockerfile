@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends --yes nginx-full libnginx-mod-http-image-filter \
+    && apt-get install --no-install-recommends --yes nginx-full \
     && rm -rf /var/lib/apt/lists/*
 
 COPY nginx.conf /etc/nginx/nginx.conf
