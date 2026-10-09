@@ -37,3 +37,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build --pull --tag imageboard:test imageboard
+
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [go_api, index_worker]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - run: go test ./...
+        working-directory: ${{ matrix.module }}
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1.0
+          working-directory: ${{ matrix.module }}
+          args: --config ../.golangci.yml

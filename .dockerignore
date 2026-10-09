@@ -1,0 +1,11 @@
+.env
+.secrets/
+.git/
+.idea/
+.venv/
+imageboard/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+imageboard/test.db
+9

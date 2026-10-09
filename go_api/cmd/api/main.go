@@ -6,24 +6,20 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/scrypt"
 )
@@ -58,27 +54,27 @@ type application struct {
 }
 
 type image struct {
-	ID        int32      `json:"id"`
-	Name      string     `json:"name"`
-	Path      string     `json:"path"`
-	MediaURL  string     `json:"media_url"`
-	FileURL   string     `json:"file_url"`
-	ThumbURL  string     `json:"thumbnail_url"`
-	Kind      string     `json:"kind"`
-	CreatedAt time.Time  `json:"created_at"`
-	FileSize  *int64     `json:"file_size"`
-	Hits      int32      `json:"hits"`
-	Uploader  *string    `json:"uploader"`
-	Tags      []string   `json:"tags"`
-	Comments  []comment  `json:"comments"`
+	ID        int32     `json:"id"`
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	MediaURL  string    `json:"media_url"`
+	FileURL   string    `json:"file_url"`
+	ThumbURL  string    `json:"thumbnail_url"`
+	Kind      string    `json:"kind"`
+	CreatedAt time.Time `json:"created_at"`
+	FileSize  *int64    `json:"file_size"`
+	Hits      int32     `json:"hits"`
+	Uploader  *string   `json:"uploader"`
+	Tags      []string  `json:"tags"`
+	Comments  []comment `json:"comments"`
 }
 
 type comment struct {
-	ID        int32      `json:"id"`
-	Author    *string    `json:"author"`
-	Text      string     `json:"text"`
-	CreatedAt time.Time  `json:"created_at"`
-	ReplyTo   *int32     `json:"reply_to"`
+	ID        int32     `json:"id"`
+	Author    *string   `json:"author"`
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"created_at"`
+	ReplyTo   *int32    `json:"reply_to"`
 }
 
 type indexJob struct {
@@ -109,8 +105,18 @@ func main() {
 	if err := pool.Ping(ctx); err != nil {
 		fatal(err)
 	}
-	app := &application{pool: pool, config: cfg, authCache: map[string]cacheEntry{}, scryptSem: make(chan struct{}, envInt("AUTH_SCRYPT_CONCURRENCY", 4))}
-	server := &http.Server{Addr: ":8000", Handler: app.routes(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second}
+	app := &application{
+		pool:      pool,
+		config:    cfg,
+		authCache: map[string]cacheEntry{},
+		scryptSem: make(chan struct{}, envInt("AUTH_SCRYPT_CONCURRENCY", 4)),
+	}
+	server := &http.Server{
+		Addr:              ":8000",
+		Handler:           app.routes(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
 	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		fatal(err)
 	}
@@ -118,7 +124,9 @@ func main() {
 
 func (a *application) routes() http.Handler {
 	r := chi.NewRouter()
-	r.Get("/health/live", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, map[string]string{"status": "ok"}) })
+	r.Get("/health/live", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
 	r.Get("/health/ready", a.ready)
 	r.Get("/", a.withAuth(a.index))
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir(a.config.staticRoot))))
@@ -223,7 +231,9 @@ func (a *application) verifyPassword(encoded, password string) bool {
 	if len(params) != 3 {
 		return false
 	}
-	n, nErr := strconv.Atoi(params[0]); r, rErr := strconv.Atoi(params[1]); p, pErr := strconv.Atoi(params[2])
+	n, nErr := strconv.Atoi(params[0])
+	r, rErr := strconv.Atoi(params[1])
+	p, pErr := strconv.Atoi(params[2])
 	digest, decodeErr := hex.DecodeString(parts[2])
 	if nErr != nil || rErr != nil || pErr != nil || n < 2 || n > 32768 || r < 1 || r > 16 || p < 1 || p > 4 || decodeErr != nil {
 		return false
@@ -246,11 +256,24 @@ func (a *application) ready(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (a *application) index(w http.ResponseWriter, r *http.Request, _ user) { http.ServeFile(w, r, filepath.Join(a.config.staticRoot, "index.html")) }
-func (a *application) me(w http.ResponseWriter, r *http.Request, user user) { writeJSON(w, http.StatusOK, map[string]any{"id": user.ID, "name": user.Name, "admin": user.Admin}) }
+func (a *application) index(w http.ResponseWriter, r *http.Request, _ user) {
+	http.ServeFile(w, r, filepath.Join(a.config.staticRoot, "index.html"))
+}
+
+func (a *application) me(w http.ResponseWriter, r *http.Request, user user) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":    user.ID,
+		"name":  user.Name,
+		"admin": user.Admin,
+	})
+}
 
 func (a *application) authorizeMedia(w http.ResponseWriter, r *http.Request, user user) {
-	original := strings.Split(r.Header.Get("X-Original-URI"), "?")[0]
+	original, err := url.PathUnescape(strings.Split(r.Header.Get("X-Original-URI"), "?")[0])
+	if err != nil {
+		writeError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
 	if !strings.HasPrefix(original, "/media/") && !strings.HasPrefix(original, "/thumbnail/") {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -260,7 +283,10 @@ func (a *application) authorizeMedia(w http.ResponseWriter, r *http.Request, use
 		path = strings.ReplaceAll(strings.TrimPrefix(original, "/media/"), "/", "$")
 	} else {
 		parts := strings.Split(strings.TrimPrefix(original, "/thumbnail/"), "/")
-		if len(parts) < 2 { writeError(w, http.StatusForbidden, "Forbidden"); return }
+		if len(parts) < 2 {
+			writeError(w, http.StatusForbidden, "Forbidden")
+			return
+		}
 		path = strings.Join(parts[:len(parts)-1], "$")
 	}
 	if !user.Admin {
@@ -273,17 +299,77 @@ func (a *application) authorizeMedia(w http.ResponseWriter, r *http.Request, use
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) { w.Header().Set("Content-Type", "application/json"); w.WriteHeader(status); _ = json.NewEncoder(w).Encode(value) }
-func writeError(w http.ResponseWriter, status int, detail string) { writeJSON(w, status, map[string]string{"detail": detail}) }
-func fatal(err error) { _, _ = fmt.Fprintln(os.Stderr, "startup failed"); _ = err; os.Exit(1) }
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeError(w http.ResponseWriter, status int, detail string) {
+	writeJSON(w, status, map[string]string{"detail": detail})
+}
+
+func fatal(err error) {
+	// Configuration and database errors may embed secrets; never emit their text.
+	_, _ = fmt.Fprintln(os.Stderr, "startup failed")
+	_ = err
+	os.Exit(1)
+}
 
 func loadConfig() config {
 	secret := os.Getenv("IMAGEBOARD_SECRET_KEY")
-	if secret == "" { secret = randomID() }
-	return config{databaseURL: normalizeDatabaseURL(requiredEnv("IMAGEBOARD_DATABASE_URL")), mediaRoot: requiredEnv("IMAGEBOARD_MEDIA_ROOT"), mediaURL: env("IMAGEBOARD_MEDIA_URL", "/media"), healthToken: os.Getenv("IMAGEBOARD_HEALTH_TOKEN"), staticRoot: env("IMAGEBOARD_STATIC_ROOT", "/static"), authTTL: time.Duration(envInt("AUTH_CACHE_SECONDS", 20)) * time.Second, authCacheKey: []byte(secret)}
+	if secret == "" {
+		secret = randomID()
+	}
+	return config{
+		databaseURL:  normalizeDatabaseURL(requiredEnv("IMAGEBOARD_DATABASE_URL")),
+		mediaRoot:    requiredEnv("IMAGEBOARD_MEDIA_ROOT"),
+		mediaURL:     env("IMAGEBOARD_MEDIA_URL", "/media"),
+		healthToken:  os.Getenv("IMAGEBOARD_HEALTH_TOKEN"),
+		staticRoot:   env("IMAGEBOARD_STATIC_ROOT", "/static"),
+		authTTL:      time.Duration(envInt("AUTH_CACHE_SECONDS", 20)) * time.Second,
+		authCacheKey: []byte(secret),
+	}
 }
-func requiredEnv(name string) string { value := os.Getenv(name); if value == "" { fatal(errors.New("missing configuration")) }; return value }
-func env(name, fallback string) string { if value := os.Getenv(name); value != "" { return value }; return fallback }
-func envInt(name string, fallback int) int { value, err := strconv.Atoi(os.Getenv(name)); if err != nil || value < 1 { return fallback }; return value }
-func normalizeDatabaseURL(value string) string { return strings.Replace(value, "postgresql+psycopg://", "postgres://", 1) }
-func randomID() string { bytes := make([]byte, 16); _, _ = rand.Read(bytes); return hex.EncodeToString(bytes) }
+
+func requiredEnv(name string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		fatal(errors.New("missing configuration"))
+	}
+	return value
+}
+
+func env(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envInt(name string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || value < 1 {
+		return fallback
+	}
+	return value
+}
+
+func normalizeDatabaseURL(value string) string {
+	return strings.Replace(value, "postgresql+psycopg://", "postgres://", 1)
+}
+
+func randomID() string {
+	bytes := make([]byte, 16)
+	_, _ = rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
+
+func uuid() string {
+	bytes := make([]byte, 16)
+	_, _ = rand.Read(bytes)
+	bytes[6] = bytes[6]&0x0f | 0x40
+	bytes[8] = bytes[8]&0x3f | 0x80
+	encoded := hex.EncodeToString(bytes)
+	return encoded[0:8] + "-" + encoded[8:12] + "-" + encoded[12:16] + "-" + encoded[16:20] + "-" + encoded[20:]
+}

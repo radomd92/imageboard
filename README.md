@@ -1,6 +1,6 @@
 # Paradise Imageboard
 
-Private FastAPI media catalog. PostgreSQL stores image metadata, tags, comments, and users. Nginx directly serves mounted read-only media and generates image thumbnails. PostgreSQL and the application run as separate Compose projects so application redeployments cannot replace or remove the database service. A separate Go worker indexes media asynchronously through PostgreSQL-backed durable jobs.
+Private Go media catalog. PostgreSQL stores image metadata, tags, comments, and users. Nginx directly serves mounted read-only media and generates image thumbnails. PostgreSQL and the application run as separate Compose projects so application redeployments cannot replace or remove the database service. A separate Go worker indexes media asynchronously through PostgreSQL-backed durable jobs.
 
 ## Deploy
 
@@ -13,7 +13,7 @@ Private FastAPI media catalog. PostgreSQL stores image metadata, tags, comments,
    docker compose -p imageboard-database -f docker-compose.database.yml up -d
    ```
 
-3. After PostgreSQL is healthy, build and start the application deployment. App startup applies Alembic migrations.
+3. After PostgreSQL is healthy, build and start the application deployment. The one-shot `migrator` service applies Alembic migrations before the Go index worker starts.
 
    ```bash
    docker compose up -d --build
@@ -22,7 +22,7 @@ Private FastAPI media catalog. PostgreSQL stores image metadata, tags, comments,
 4. Create first user. Public registration is intentionally absent.
 
    ```bash
-   docker compose run --rm app python -m imageboard.create_user administrator
+   docker compose run --rm --entrypoint python migrator -m imageboard.create_user administrator
    ```
 
 5. Read the generated v3 onion address after Tor reaches healthy state.
@@ -35,7 +35,7 @@ Media stays outside containers. `IMAGEBOARD_MEDIA_ROOT=/srv/photos` mounts host 
 
 ## Async indexing
 
-The Go `index-worker` service claims durable jobs from PostgreSQL. Index requests return immediately and never hold a browser, Nginx, or Gunicorn connection while scanning. Jobs traverse from the requested root, batch metadata upserts, and report progress through the API. A successful scan reconciles its scope: indexed files absent from the scanned folder are de-indexed asynchronously. Incomplete scans caused by unreadable or unstable filesystem entries never de-index records.
+The Go `index-worker` service claims durable jobs from PostgreSQL. Index requests return immediately and never hold a browser or Nginx connection while scanning. Jobs traverse from the requested root, batch metadata upserts, and report progress through the API. A successful scan reconciles its scope: indexed files absent from the scanned folder are de-indexed asynchronously. Incomplete scans caused by unreadable or unstable filesystem entries never de-index records.
 
 Start a full recursive index job with the included helper. It prompts for credentials unless supplied through environment variables; do not put credentials in the script.
 
@@ -44,6 +44,16 @@ INDEX_INSECURE=1 python3 index_all.py
 ```
 
 `INDEX_INSECURE=1` is needed only for a self-signed local TLS certificate. Set `INDEX_API_URL` for another endpoint, and `IMAGEBOARD_USER` / `IMAGEBOARD_PASSWORD` for non-interactive use. The Tor endpoint remains read-only and cannot submit jobs.
+
+## Password Rotation
+
+Rotate an HTTP Basic password without exposing it in command arguments or environment variables:
+
+```bash
+./rotate_password.sh
+```
+
+The optional first argument selects another username. The script restarts the Go API after updating the Werkzeug-compatible scrypt hash, invalidating its short-lived authentication cache.
 
 ## PostgreSQL lifecycle
 
@@ -86,4 +96,4 @@ curl --user user:password -X POST https://host:8443/api/images/42/context \
 
 `GET /api/images/{id}` returns image metadata, tags, comments, and direct media URL. `GET /api/images/{id}/file` increments view count then redirects to protected Nginx media. `POST /api/images/{id}/context` replaces tags when `tags` supplied and appends comment when `comment` supplied.
 
-Nginx rejects writes, hides directory indexes, disables symlinks, authenticates each media request through FastAPI, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled: Nginx image filter supports images only; do not install unreviewed video-thumbnail modules.
+Nginx rejects writes, hides directory indexes, disables symlinks, authenticates each media request through the Go API, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled: Nginx image filter supports images only; do not install unreviewed video-thumbnail modules.
