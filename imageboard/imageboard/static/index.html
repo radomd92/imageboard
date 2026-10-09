@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paradise Imageboard</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="menubar">
+    <strong class="apple">◆</strong><strong>Paradise</strong>
+    <span>File</span><span>Edit</span><span>View</span><span>Go</span>
+    <span id="clock"></span>
+  </div>
+  <main class="desktop">
+    <section class="window app-window">
+      <header class="titlebar"><i></i><h1>Paradise Imageboard</h1><i></i></header>
+      <div class="app-body">
+        <aside class="sidebar">
+          <div class="brand"><span class="brand-mark">P</span><div><strong>PARADISE</strong><small>MEDIA CATALOG</small></div></div>
+          <nav id="navigation">
+            <button data-view="home" class="active"><span>⌂</span>Dashboard</button>
+            <button data-view="library"><span>▦</span>Library</button>
+            <button data-view="tags"><span>◇</span>Tags</button>
+            <button data-view="untagged"><span>□</span>Needs Tags</button>
+            <button data-view="explorer" class="admin-only"><span>▣</span>Media Explorer</button>
+          </nav>
+          <div class="user-panel"><span class="user-icon">●</span><div><strong id="username">Loading</strong><small id="role">USER</small></div></div>
+        </aside>
+        <section class="workspace">
+          <div class="toolbar">
+            <div class="history"><button id="back" title="Back">‹</button><button id="forward" title="Forward">›</button></div>
+            <div class="path" id="path">Paradise HD : Dashboard</div>
+            <label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search library"></label>
+          </div>
+          <div id="notice" role="status"></div>
+          <section id="view" class="view"></section>
+          <footer class="statusbar"><span id="status">Connecting…</span><span class="resize">◢</span></footer>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="inspector" class="window modal">
+    <header class="titlebar"><button class="close-box" data-close="inspector">×</button><h2 id="inspector-title">Media Inspector</h2><i></i></header>
+    <div id="inspector-body" class="modal-body"></div>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

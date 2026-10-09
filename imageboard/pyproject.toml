@@ -7,7 +7,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "S", "B"]
-ignore = ["S101", "S105", "S106", "S107"]
+ignore = ["B008", "E501", "S101", "S105", "S106", "S107"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "imageboard/static"]

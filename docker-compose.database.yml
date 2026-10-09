@@ -1,0 +1,29 @@
+services:
+  database:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: imageboard
+      POSTGRES_USER: imageboard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      backend:
+        aliases:
+          - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imageboard -d imageboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+    external: true
+    name: imageboard_postgres-data
+
+networks:
+  backend:
+    external: true
+    name: imageboard-backend

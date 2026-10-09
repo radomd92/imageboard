@@ -1,111 +1,89 @@
 # Paradise Imageboard
 
-Paradise is a private, self-hosted media catalog. Nginx serves an existing read-only image/video tree, while Flask stores searchable metadata, tags, authenticated comments, audit events, and view counts in PostgreSQL.
+Private FastAPI media catalog. PostgreSQL stores image metadata, tags, comments, and users. Nginx directly serves mounted read-only media and generates image thumbnails. PostgreSQL and the application run as separate Compose projects so application redeployments cannot replace or remove the database service. A separate Go worker indexes media asynchronously through PostgreSQL-backed durable jobs.
 
-The service is private by default. All application content requires a local account. Only administrators can browse the media origin, index files, or edit metadata. Public registration is intentionally unavailable.
+## Deploy
 
-## Security Model
+1. Copy `.env.example` to `.env`; set strong database password, health token, media mount path, and TLS certificate paths.
+2. Provision the persistent volume and shared network once, then start the independent PostgreSQL deployment.
 
-- Flask is the only browser-facing application. Do not expose the media-origin Nginx service publicly.
-- The media origin must use HTTPS with a trusted private or public CA. TLS verification cannot be disabled.
-- Every media request must reference an already indexed canonical path and an allow-listed media extension/MIME type.
-- Media is streamed with time and size limits. The application does not deserialize or persist upstream media cache payloads.
-- Mutating requests require authentication and CSRF tokens. Metadata changes require administrator privileges.
-- Login, comments, media, thumbnails, exploration, and indexing are rate limited.
-- Sessions use secure, HTTP-only, SameSite cookies. Host allow-listing, CSP, HSTS, anti-framing, MIME-sniffing, referrer, and permissions headers are enabled.
-- Privileged changes and comments create database audit events.
+   ```bash
+   docker volume create imageboard_postgres-data
+   docker network create imageboard-backend
+   docker compose -p imageboard-database -f docker-compose.database.yml up -d
+   ```
 
-This design materially reduces common application risks, but no software is "bulletproof." Host patching, firewall policy, TLS key custody, database/media backups, monitoring, and incident response remain operator responsibilities.
+3. After PostgreSQL is healthy, build and start the application deployment. App startup applies Alembic migrations.
 
-## Requirements
+   ```bash
+   docker compose up -d --build
+   ```
 
-- Python 3.13 or Docker
-- PostgreSQL 17
-- Redis 8 for shared production rate limits
-- Nginx compiled with `ngx_http_image_filter_module`
-- A trusted TLS certificate for both the user-facing reverse proxy and media origin
+4. Create first user. Public registration is intentionally absent.
 
-## Configuration
+   ```bash
+   docker compose run --rm app python -m imageboard.create_user administrator
+   ```
 
-Copy `.env.example` to `.env` and replace every placeholder. Never commit `.env`.
+5. Read the generated v3 onion address after Tor reaches healthy state.
 
-Generate the application secret with:
+   ```bash
+   docker compose exec tor cat /var/lib/tor/imageboard/hostname
+   ```
 
-```bash
-python -c 'import secrets; print(secrets.token_urlsafe(48))'
-```
+Media stays outside containers. `IMAGEBOARD_MEDIA_ROOT=/srv/photos` mounts host `/srv/photos` read-only at Nginx `/srv/media`; Nginx serves it at `https://host:8443/media/...`.
 
-Important settings:
+## Async indexing
 
-- `IMAGEBOARD_SECRET_KEY`: at least 32 random characters
-- `IMAGEBOARD_DATABASE_URL`: SQLAlchemy PostgreSQL connection URL
-- `IMAGEBOARD_FILE_SERVER`: HTTPS URL to the Nginx `/images` location, without embedded credentials
-- `IMAGEBOARD_FILE_SERVER_USERNAME` and `IMAGEBOARD_FILE_SERVER_PASSWORD`: media-origin Basic Auth
-- `IMAGEBOARD_FILE_SERVER_CA_BUNDLE`: CA bundle path, or omit it for system trust
-- `IMAGEBOARD_TRUSTED_HOSTS`: comma-separated browser-facing hostnames
-- `IMAGEBOARD_TRUSTED_PROXY_NETWORKS`: exact proxy source CIDRs permitted to supply `X-Forwarded-For`
-- `IMAGEBOARD_HEALTH_TOKEN`: independent random bearer token for `/health/ready`
-- `IMAGEBOARD_RATE_LIMIT_STORAGE`: Redis URL in multi-worker production
+The Go `index-worker` service claims durable jobs from PostgreSQL. Index requests return immediately and never hold a browser, Nginx, or Gunicorn connection while scanning. Jobs traverse from the requested root, batch metadata upserts, and report progress through the API. A successful scan reconciles its scope: indexed files absent from the scanned folder are de-indexed asynchronously. Incomplete scans caused by unreadable or unstable filesystem entries never de-index records.
 
-Secure cookies and HSTS default to enabled. They may only be disabled for local HTTP development, never production.
-
-## Database Setup
-
-Install dependencies and apply migrations from `imageboard/`:
+Start a full recursive index job with the included helper. It prompts for credentials unless supplied through environment variables; do not put credentials in the script.
 
 ```bash
-python -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-flask --app runserver:app db upgrade
-flask --app runserver:app create-user --admin
+INDEX_INSECURE=1 python3 index_all.py
 ```
 
-For an existing PostgreSQL installation, take a verified database backup before migrating. The baseline detects the legacy tables, preserves valid media metadata, tags, comments, ratings, and hits, and adds the hardened constraints and audit table. All legacy account names are renamed and all passwords are deliberately invalidated because the old application never enforced authentication. Create new accounts with the CLI. Test the migration against a restored staging copy and verify row counts, application behavior, and rollback procedures before production cutover. The baseline migration is intentionally irreversible; rollback means restoring the verified backup.
+`INDEX_INSECURE=1` is needed only for a self-signed local TLS certificate. Set `INDEX_API_URL` for another endpoint, and `IMAGEBOARD_USER` / `IMAGEBOARD_PASSWORD` for non-interactive use. The Tor endpoint remains read-only and cannot submit jobs.
 
-## Production Deployment
+## PostgreSQL lifecycle
 
-`docker-compose.yml` provides the application, PostgreSQL, and Redis baseline. The application binds only to `127.0.0.1:8000`; place a maintained HTTPS reverse proxy in front of it.
+Application commands such as `docker compose down` and `docker compose up -d --build` do not manage PostgreSQL. Database data remains in the external `imageboard_postgres-data` volume across container replacement and application redeployments. Compose does not delete this external volume, including when `down --volumes` is used.
+
+Manage PostgreSQL separately:
 
 ```bash
-docker compose build
-docker compose run --rm app flask --app runserver:app db upgrade
-docker compose run --rm app flask --app runserver:app create-user --admin
-docker compose up -d
+docker compose -p imageboard-database -f docker-compose.database.yml ps
+docker compose -p imageboard-database -f docker-compose.database.yml pull
+docker compose -p imageboard-database -f docker-compose.database.yml up -d
 ```
 
-Deployment requirements:
-
-- Restrict media-origin port `8443` to the application host at the firewall.
-- Mount CA certificates and credentials through secrets, not container images or environment files where a secrets manager is available.
-- Terminate browser TLS at the reverse proxy and forward the original `Host` unchanged.
-- Do not add `ProxyFix` unless exact trusted proxy hops are configured.
-- Back up PostgreSQL and the external media tree independently; regularly test restores.
-- Alert on HTTP 401/403/429/5xx rates, readiness failures, origin TLS failures, storage capacity, and database health.
-- Rotate application secrets, origin credentials, TLS keys, and user passwords under a documented incident procedure.
-
-Liveness is available at `/health/live`. Readiness, including a database check, is available at `/health/ready` and requires `Authorization: Bearer <IMAGEBOARD_HEALTH_TOKEN>`.
-
-## Media Origin
-
-Adapt `nginx_file_server/nginx.conf.example`:
-
-1. Serve a dedicated read-only media root with symlinks disabled.
-2. Configure a valid TLS certificate and Basic Auth secret.
-3. Restrict network access to the application host.
-4. Keep all methods except `GET` denied.
-5. Confirm image-filter memory limits fit the host.
-6. Enable video thumbnail extraction only after independently reviewing and patching that third-party module.
-
-## Verification
-
-Install development dependencies and run:
+Delete `imageboard_postgres-data` only when permanent data deletion is intended. Persistent volumes are not backups; take regular logical backups outside the repository:
 
 ```bash
-pytest
-ruff check imageboard tests
-bandit -r imageboard -x imageboard/static
-pip-audit -r requirements.txt
+(umask 077; docker compose -p imageboard-database -f docker-compose.database.yml exec -T database \
+  pg_dump -U imageboard -d imageboard -Fc > /path/to/secure-backups/imageboard.dump)
 ```
 
-Dependency scanning is time-sensitive. Rebuild and rerun it whenever images or packages are updated.
+## Tor hidden service
+
+The `tor` service publishes Nginx's internal HTTP-only port as onion port 80. The onion protocol already authenticates and encrypts traffic end to end, so TLS is intentionally omitted on this path. Port 8080 listens only on loopback inside the network namespace shared by Nginx and Tor; it is not reachable from the host or other containers.
+
+HTTP Basic authentication remains required. The onion site is read-only: Nginx permits authenticated `GET`/`HEAD` API requests needed by the UI, rejects API mutation methods, and blocks the nominally read-only file endpoint because it records view-count changes. Media and thumbnails remain authenticated. The onion UI hides editing, commenting, and indexing controls.
+
+The onion identity and private keys live in the `tor-data` volume. Preserve that volume to keep the address stable, protect its contents as credentials, and never commit exported keys. Removing the volume creates a new onion address on next start.
+
+## API
+
+All `/api` and `/media` requests require HTTP Basic authentication. Use TLS; Basic credentials must never traverse HTTP.
+
+```bash
+curl --user user:password https://host:8443/api/images/42
+curl --user user:password -L https://host:8443/api/images/42/file -o image
+curl --user user:password -X POST https://host:8443/api/images/42/context \
+  -H 'content-type: application/json' \
+  -d '{"tags":["travel","sunset"],"comment":"Taken at dusk"}'
+```
+
+`GET /api/images/{id}` returns image metadata, tags, comments, and direct media URL. `GET /api/images/{id}/file` increments view count then redirects to protected Nginx media. `POST /api/images/{id}/context` replaces tags when `tags` supplied and appends comment when `comment` supplied.
+
+Nginx rejects writes, hides directory indexes, disables symlinks, authenticates each media request through FastAPI, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled: Nginx image filter supports images only; do not install unreviewed video-thumbnail modules.

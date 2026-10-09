@@ -5,6 +5,7 @@
 /imageboard/imageboard.pyproj
 /imageboard/imageboard.pyproj.user
 /.env
+/.secrets/
 /.venv/
 /imageboard/.venv/
 /.pytest_cache/
@@ -12,5 +13,6 @@
 /**/__pycache__/
 *.py[cod]
 *.sqlite3
+/imageboard/test.db
 coverage.xml
 .coverage

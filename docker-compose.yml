@@ -1,38 +1,81 @@
 services:
   app:
-    build:
-      context: ./imageboard
+    build: ./imageboard
     restart: unless-stopped
     env_file: .env
+    environment:
+      IMAGEBOARD_MEDIA_ROOT: /srv/media
+    volumes:
+      - ${IMAGEBOARD_MEDIA_ROOT:?set IMAGEBOARD_MEDIA_ROOT}:/srv/media:ro
     depends_on:
-      database:
-        condition: service_healthy
       redis:
         condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp:size=64m,noexec,nosuid,nodev
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - "127.0.0.1:8000:8000"
-
-  database:
-    image: postgres:17.5-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: imageboard
-      POSTGRES_USER: imageboard
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    expose: ["8000"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U imageboard -d imageboard"]
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/health/ready', headers={'Authorization': 'Bearer ' + os.environ['IMAGEBOARD_HEALTH_TOKEN']}), timeout=3)\""]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 6
+
+  index-worker:
+    build: ./index_worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      IMAGEBOARD_MEDIA_ROOT: /srv/media
+      INDEX_BATCH_SIZE: 500
+    volumes:
+      - ${IMAGEBOARD_MEDIA_ROOT:?set IMAGEBOARD_MEDIA_ROOT}:/srv/media:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  nginx:
+    build: ./nginx_file_server
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      MEDIA_ROOT: /srv/media
+    volumes:
+      - ${IMAGEBOARD_MEDIA_ROOT:?set IMAGEBOARD_MEDIA_ROOT}:/srv/media:ro
+      - ${IMAGEBOARD_TLS_CERT:?set IMAGEBOARD_TLS_CERT}:/run/secrets/tls.crt:ro
+      - ${IMAGEBOARD_TLS_KEY:?set IMAGEBOARD_TLS_KEY}:/run/secrets/tls.key:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64m,noexec,nosuid,nodev
+      - /var/lib/nginx:size=1m,noexec,nosuid,nodev
+      - /var/run:size=1m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "8443:8443"
+
+  tor:
+    build: ./tor
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    network_mode: service:nginx
+    volumes:
+      - tor-data:/var/lib/tor
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /var/lib/tor/imageboard/hostname"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:8.0.3-alpine
@@ -48,4 +91,9 @@ services:
       retries: 5
 
 volumes:
-  postgres-data:
+  tor-data:
+
+networks:
+  default:
+    external: true
+    name: imageboard-backend
