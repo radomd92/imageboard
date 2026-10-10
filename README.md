@@ -52,9 +52,12 @@ INDEX_INSECURE=1 python3 index_all.py
 ```bash
 python3 describe_image.py 'https://example.invalid/image.jpg' --model gemma3
 python3 describe_image.py 'https://example.invalid/image.jpg' --api openai --model gemma3 --endpoint http://127.0.0.1:11434/v1/chat/completions
+python3 describe_image.py --untagged --imageboard-url https://127.0.0.1:8443 --model gemma3
 ```
 
-The default is Ollama at `http://127.0.0.1:11434/api/generate`. The script rejects model endpoints that resolve outside loopback addresses, caps downloads at 20 MiB, and never prints the source URL or image bytes.
+The default is Ollama at `http://127.0.0.1:11434/api/generate`. `--untagged` paginates all untagged image records through `/api/images?untagged=true`, prompts for Imageboard HTTP Basic credentials, and downloads each returned protected media URL only while the script runs. It prints the image ID, description, and suggested tags. Use `--apply` to replace each image's tags, and add `--comment-description` only when comments should be created too.
+
+The script rejects model endpoints that resolve outside loopback addresses, caps downloads at 20 MiB, and never prints source URLs, credentials, or image bytes.
 
 ## Password Rotation
 

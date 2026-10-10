@@ -44,8 +44,12 @@ const size = (bytes) =>
     : bytes < 1024 * 1024
       ? `${Math.round(bytes / 1024)} KB`
       : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+const tagLinks = (tags) =>
+  tags.length
+    ? tags.map((tag) => `<button class="tag-link" type="button" data-tag="${esc(tag)}">${esc(tag)}</button>`).join(" · ")
+    : "untagged";
 const mediaCard = (item) =>
-  `<article class="media-card"><button class="favorite-toggle" data-favorite="${item.id}" data-active="${item.favorite}" title="${item.favorite ? "Remove favorite" : "Add favorite"}">${item.favorite ? "★" : "☆"}</button><button data-image="${item.id}"><div class="media-preview">${item.kind === "video" ? '<div class="video-placeholder">VIDEO</div>' : `<img loading="lazy" src="${item.thumbnail_url}" alt="">`}<span class="media-type">${item.kind.toUpperCase()}</span></div><div class="card-info"><strong>${esc(item.name)}</strong><small>${size(item.file_size)} · ${item.hits} views</small><div class="tag-line">${item.tags.map(esc).join(" · ") || "untagged"}</div></div></button></article>`;
+  `<article class="media-card"><button class="favorite-toggle" data-favorite="${item.id}" data-active="${item.favorite}" title="${item.favorite ? "Remove favorite" : "Add favorite"}">${item.favorite ? "★" : "☆"}</button><div class="media-open" data-image="${item.id}" role="button" tabindex="0"><div class="media-preview">${item.kind === "video" ? '<div class="video-placeholder">VIDEO</div>' : `<img loading="lazy" src="${item.thumbnail_url}" alt="">`}<span class="media-type">${item.kind.toUpperCase()}</span></div><div class="card-info"><strong>${esc(item.name)}</strong><small>${size(item.file_size)} · ${item.hits} views</small><div class="tag-line">${tagLinks(item.tags)}</div></div></div></article>`;
 const cards = (items) =>
   `<div class="media-grid">${items.length ? items.map(mediaCard).join("") : '<div class="empty">Nothing found in this view.</div>'}</div>`;
 const header = (title, subtitle, action = "") =>
@@ -231,7 +235,7 @@ async function inspect(id) {
     ? ""
     : `<button class="button favorite-action" data-favorite="${item.id}" data-active="${item.favorite}">${item.favorite ? "★ Remove Favorite" : "☆ Add Favorite"}</button>`;
   el("inspector-body").innerHTML =
-    `<div class="inspector-grid"><div>${item.kind === "video" ? `<video class="hero-media" controls preload="none" src="${source}"></video>` : `<img class="hero-media" src="${source}" alt="${esc(item.name)}">`}</div><aside><div class="info-table"><div class="info-row"><span>Kind</span><span>${item.kind}</span></div><div class="info-row"><span>Size</span><span>${size(item.file_size)}</span></div><div class="info-row"><span>Views</span><span>${item.hits}</span></div><div class="info-row"><span>Uploader</span><span>${esc(item.uploader || "Unknown")}</span></div><div class="info-row"><span>Indexed</span><span>${new Date(item.created_at).toLocaleString()}</span></div><div class="info-row"><span>Path</span><span>${esc(item.path.replaceAll("$", "/"))}</span></div></div><div class="tag-line">${item.tags.map(esc).join(" · ") || "untagged"}</div>${favorite}${edit}</aside></div><section class="comments"><div class="section-title"><h3>COMMENTS</h3></div><div id="comment-list">${commentTree(item.comments) || "<p>No comments yet.</p>"}</div>${commentForm}</section>`;
+    `<div class="inspector-grid"><div>${item.kind === "video" ? `<video class="hero-media" controls preload="none" src="${source}"></video>` : `<img class="hero-media" src="${source}" alt="${esc(item.name)}">`}</div><aside><div class="info-table"><div class="info-row"><span>Kind</span><span>${item.kind}</span></div><div class="info-row"><span>Size</span><span>${size(item.file_size)}</span></div><div class="info-row"><span>Views</span><span>${item.hits}</span></div><div class="info-row"><span>Uploader</span><span>${esc(item.uploader || "Unknown")}</span></div><div class="info-row"><span>Indexed</span><span>${new Date(item.created_at).toLocaleString()}</span></div><div class="info-row"><span>Path</span><span>${esc(item.path.replaceAll("$", "/"))}</span></div></div><div class="tag-line">${tagLinks(item.tags)}</div>${favorite}${edit}</aside></div><section class="comments"><div class="section-title"><h3>COMMENTS</h3></div><div id="comment-list">${commentTree(item.comments) || "<p>No comments yet.</p>"}</div>${commentForm}</section>`;
   el("inspector").showModal();
   const metadata = el("metadata-form");
   if (metadata)
@@ -330,9 +334,13 @@ function navigate(view, push = true) {
 }
 document.addEventListener("click", async (event) => {
   const target = event.target.closest(
-    "button,[data-image],[data-folder],[data-preview],[data-document]",
+    "button,[data-image],[data-tag],[data-folder],[data-preview],[data-document]",
   );
   if (!target) return;
+  if (target.dataset.searchHelp) {
+    notice("Search: #tag for tags, [comment] for comment text, and 'path' for file paths. All terms must match.");
+    return;
+  }
   if (target.dataset.view) navigate(target.dataset.view);
   if (target.dataset.themeChoice) applyTheme(target.dataset.themeChoice);
   if (target.dataset.go) navigate(target.dataset.go);
@@ -354,6 +362,8 @@ document.addEventListener("click", async (event) => {
   if (target.dataset.tag) {
     state.view = "library";
     state.tag = target.dataset.tag;
+    state.query = "";
+    el("search").value = "";
     state.page = 1;
     render();
   }
@@ -390,6 +400,11 @@ el("search").addEventListener("keydown", (event) => {
     state.page = 1;
     render();
   }
+});
+document.addEventListener("keydown", (event) => {
+  if ((event.key !== "Enter" && event.key !== " ") || !event.target.dataset.image) return;
+  event.preventDefault();
+  inspect(event.target.dataset.image);
 });
 el("back").onclick = () => {
   if (state.historyIndex > 0) {

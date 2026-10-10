@@ -71,10 +71,11 @@
                 ><button id="forward" title="Forward">›</button>
               </div>
               <div class="path" id="path">Paradise HD : Dashboard</div>
-              <label class="search"
-                ><span>⌕</span
-                ><input id="search" type="search" placeholder="Search library"
-              /></label>
+              <div class="search">
+                <span>⌕</span>
+                <input id="search" type="search" placeholder="Search library" aria-label="Search library" />
+                <button class="search-help" type="button" data-search-help aria-label="Search syntax help" title="Search syntax help">?</button>
+              </div>
             </div>
             <div id="notice" role="status"></div>
             <section id="view" class="view"></section>

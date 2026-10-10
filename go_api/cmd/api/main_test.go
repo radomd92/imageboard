@@ -107,3 +107,25 @@ func TestParseThumbnailPath(t *testing.T) {
 		t.Fatal("unsafe thumbnail path accepted")
 	}
 }
+
+func TestParseImageSearch(t *testing.T) {
+	search, err := parseImageSearch("#tag1 #tag2 [comment 1] [comment 2] 'path term1' 'path term2'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search.tags) != 2 || search.tags[0] != "tag1" || search.tags[1] != "tag2" {
+		t.Fatalf("unexpected tags: %#v", search.tags)
+	}
+	if len(search.comments) != 2 || search.comments[0] != "comment 1" || search.comments[1] != "comment 2" {
+		t.Fatalf("unexpected comments: %#v", search.comments)
+	}
+	if len(search.paths) != 2 || search.paths[0] != "path term1" || search.paths[1] != "path term2" {
+		t.Fatalf("unexpected paths: %#v", search.paths)
+	}
+	if search.text != "" {
+		t.Fatalf("unexpected plain text: %q", search.text)
+	}
+	if _, err := parseImageSearch("[unfinished"); err == nil {
+		t.Fatal("unterminated comment accepted")
+	}
+}

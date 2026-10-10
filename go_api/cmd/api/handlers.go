@@ -23,16 +23,16 @@ import (
 
 func (a *application) listImages(w http.ResponseWriter, r *http.Request, currentUser user) {
 	query := r.URL.Query()
-	searchTerm := query.Get("q")
+	search, err := parseImageSearch(query.Get("q"))
 	tagName := query.Get("tag")
-	if len(searchTerm) > 100 || len(tagName) > 100 {
+	if err != nil || len(tagName) > 100 {
 		writeError(w, http.StatusUnprocessableEntity, "Invalid query")
 		return
 	}
 	page := positiveInt(query.Get("page"), 1)
 	limit := positiveInt(query.Get("limit"), 30)
-	if limit > 100 {
-		limit = 100
+	if limit > 100000 {
+		limit = 100000
 	}
 	filters := []string{"TRUE"}
 	arguments := []any{}
@@ -40,9 +40,21 @@ func (a *application) listImages(w http.ResponseWriter, r *http.Request, current
 		arguments = append(arguments, value)
 		return "$" + strconv.Itoa(len(arguments))
 	}
-	if searchTerm != "" {
-		placeholder := addArgument(strings.ToLower(strings.TrimSpace(searchTerm)))
+	if search.text != "" {
+		placeholder := addArgument(search.text)
 		filters = append(filters, "(lower(i.name) LIKE '%' || "+placeholder+" || '%' OR lower(i.image_path) LIKE '%' || "+placeholder+" || '%')")
+	}
+	for _, tag := range search.tags {
+		placeholder := addArgument(tag)
+		filters = append(filters, "EXISTS (SELECT 1 FROM tag_image ti JOIN tag t ON t.id = ti.tag WHERE ti.image = i.id AND lower(t.name) = "+placeholder+")")
+	}
+	for _, path := range search.paths {
+		placeholder := addArgument(path)
+		filters = append(filters, "lower(i.image_path) LIKE '%' || "+placeholder+" || '%'")
+	}
+	for _, comment := range search.comments {
+		placeholder := addArgument(comment)
+		filters = append(filters, "EXISTS (SELECT 1 FROM message m WHERE m.image = i.id AND lower(m.text) LIKE '%' || "+placeholder+" || '%')")
 	}
 	if tagName != "" {
 		placeholder := addArgument(strings.ToLower(strings.TrimSpace(tagName)))
@@ -74,6 +86,63 @@ FROM image i LEFT JOIN "user" u ON u.id = i.uploader WHERE `+whereClause+` ORDER
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": images, "page": page, "limit": limit, "total": total})
+}
+
+type imageSearch struct {
+	text     string
+	tags     []string
+	paths    []string
+	comments []string
+}
+
+func parseImageSearch(value string) (imageSearch, error) {
+	if len(value) > 1000 {
+		return imageSearch{}, errors.New("query too long")
+	}
+	search := imageSearch{}
+	plain := strings.Builder{}
+	for i := 0; i < len(value); {
+		switch value[i] {
+		case '#':
+			end := i + 1
+			for end < len(value) && !unicode.IsSpace(rune(value[end])) {
+				end++
+			}
+			tag, err := cleanTag(value[i+1 : end])
+			if err != nil {
+				return imageSearch{}, err
+			}
+			search.tags = append(search.tags, tag)
+			i = end
+		case '[', '\'':
+			closing := byte(']')
+			if value[i] == '\'' {
+				closing = '\''
+			}
+			end := strings.IndexByte(value[i+1:], closing)
+			if end < 0 {
+				return imageSearch{}, errors.New("unterminated query term")
+			}
+			term := strings.ToLower(strings.TrimSpace(value[i+1 : i+1+end]))
+			if term == "" || len(term) > 100 {
+				return imageSearch{}, errors.New("invalid query term")
+			}
+			if closing == ']' {
+				search.comments = append(search.comments, term)
+			} else {
+				search.paths = append(search.paths, term)
+			}
+			i += end + 2
+		default:
+			plain.WriteByte(value[i])
+			i++
+		}
+	}
+	search.text = strings.ToLower(strings.TrimSpace(plain.String()))
+	if len(search.tags)+len(search.paths)+len(search.comments) > 20 {
+		return imageSearch{}, errors.New("too many query terms")
+	}
+	return search, nil
 }
 
 func (a *application) getImage(w http.ResponseWriter, r *http.Request, currentUser user) {
