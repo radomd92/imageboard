@@ -13,6 +13,22 @@ const state = {
   indexJobs: new Set(),
 };
 const el = (id) => document.getElementById(id);
+const sidebar = el("sidebar");
+const drawerToggle = el("drawer-toggle");
+const drawerBackdrop = el("drawer-backdrop");
+const mobileViewport = matchMedia("(max-width: 760px)");
+function setDrawer(open) {
+  const isOpen = open && mobileViewport.matches;
+  document.body.classList.toggle("drawer-open", isOpen);
+  sidebar.inert = !isOpen && mobileViewport.matches;
+  drawerToggle.setAttribute("aria-expanded", String(isOpen));
+  drawerToggle.setAttribute(
+    "aria-label",
+    isOpen ? "Close navigation" : "Open navigation",
+  );
+  if (isOpen) requestAnimationFrame(() => sidebar.querySelector("nav button")?.focus());
+}
+setDrawer(false);
 const esc = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -49,7 +65,7 @@ const tagLinks = (tags) =>
     ? tags.map((tag) => `<button class="tag-link" type="button" data-tag="${esc(tag)}">${esc(tag)}</button>`).join(" · ")
     : "untagged";
 const mediaCard = (item) =>
-  `<article class="media-card"><button class="favorite-toggle" data-favorite="${item.id}" data-active="${item.favorite}" title="${item.favorite ? "Remove favorite" : "Add favorite"}">${item.favorite ? "★" : "☆"}</button><div class="media-open" data-image="${item.id}" role="button" tabindex="0"><div class="media-preview">${item.kind === "video" ? '<div class="video-placeholder">VIDEO</div>' : `<img loading="lazy" src="${item.thumbnail_url}" alt="">`}<span class="media-type">${item.kind.toUpperCase()}</span></div><div class="card-info"><strong>${esc(item.name)}</strong><small>${size(item.file_size)} · ${item.hits} views</small><div class="tag-line">${tagLinks(item.tags)}</div></div></div></article>`;
+  `<article class="media-card"><button class="favorite-toggle" data-favorite="${item.id}" data-active="${item.favorite}" title="${item.favorite ? "Remove favorite" : "Add favorite"}">${item.favorite ? "★" : "☆"}</button><div class="media-open" data-image="${item.id}" role="button" tabindex="0"><div class="media-preview">${item.kind === "video" ? `<div class="video-placeholder">VIDEO</div><img class="video-thumbnail" loading="lazy" src="${item.thumbnail_url}" alt="">` : `<img loading="lazy" src="${item.thumbnail_url}" alt="">`}<span class="media-type">${item.kind.toUpperCase()}</span></div><div class="card-info"><strong>${esc(item.name)}</strong><small>${size(item.file_size)} · ${item.hits} views</small><div class="tag-line">${tagLinks(item.tags)}</div></div></div></article>`;
 const cards = (items) =>
   `<div class="media-grid">${items.length ? items.map(mediaCard).join("") : '<div class="empty">Nothing found in this view.</div>'}</div>`;
 const header = (title, subtitle, action = "") =>
@@ -338,10 +354,13 @@ document.addEventListener("click", async (event) => {
   );
   if (!target) return;
   if (target.dataset.searchHelp) {
-    notice("Search: #tag for tags, [comment] for comment text, and 'path' for file paths. All terms must match.");
+    el("search-help").showModal();
     return;
   }
-  if (target.dataset.view) navigate(target.dataset.view);
+  if (target.dataset.view) {
+    setDrawer(false);
+    navigate(target.dataset.view);
+  }
   if (target.dataset.themeChoice) applyTheme(target.dataset.themeChoice);
   if (target.dataset.go) navigate(target.dataset.go);
   if (target.dataset.image) inspect(target.dataset.image);
@@ -406,6 +425,23 @@ document.addEventListener("keydown", (event) => {
   event.preventDefault();
   inspect(event.target.dataset.image);
 });
+document.addEventListener("error", (event) => {
+  if (event.target.classList?.contains("video-thumbnail")) event.target.remove();
+}, true);
+drawerToggle.addEventListener("click", () => {
+  setDrawer(!document.body.classList.contains("drawer-open"));
+});
+drawerBackdrop.addEventListener("click", () => {
+  setDrawer(false);
+  drawerToggle.focus();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.body.classList.contains("drawer-open")) {
+    setDrawer(false);
+    drawerToggle.focus();
+  }
+});
+mobileViewport.addEventListener("change", () => setDrawer(false));
 el("back").onclick = () => {
   if (state.historyIndex > 0) {
     state.historyIndex--;
@@ -422,6 +458,9 @@ el("inspector").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
 });
 el("document-reader").addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+el("search-help").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
 });
 const releaseInspectorMedia = () => {

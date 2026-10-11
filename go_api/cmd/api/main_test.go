@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -113,19 +114,73 @@ func TestParseImageSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(search.tags) != 2 || search.tags[0] != "tag1" || search.tags[1] != "tag2" {
-		t.Fatalf("unexpected tags: %#v", search.tags)
+	sql, values := compileTestSearch(search.root)
+	if countSearchNodes(search.root, imageSearchAnd) != 5 {
+		t.Fatalf("expected implicit AND terms: %s", sql)
 	}
-	if len(search.comments) != 2 || search.comments[0] != "comment 1" || search.comments[1] != "comment 2" {
-		t.Fatalf("unexpected comments: %#v", search.comments)
-	}
-	if len(search.paths) != 2 || search.paths[0] != "path term1" || search.paths[1] != "path term2" {
-		t.Fatalf("unexpected paths: %#v", search.paths)
-	}
-	if search.text != "" {
-		t.Fatalf("unexpected plain text: %q", search.text)
+	expected := []string{"tag1", "tag2", "comment 1", "comment 2", "path term1", "path term2"}
+	if strings.Join(values, ",") != strings.Join(expected, ",") {
+		t.Fatalf("unexpected search values: %#v", values)
 	}
 	if _, err := parseImageSearch("[unfinished"); err == nil {
 		t.Fatal("unterminated comment accepted")
 	}
+	search, err = parseImageSearch("#tag_with_space ![comment_with_space] !'path_with_space'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, values = compileTestSearch(search.root)
+	expected = []string{"tag with space", "comment with space", "path with space"}
+	if strings.Join(values, ",") != strings.Join(expected, ",") {
+		t.Fatalf("underscores were not normalized: %#v", values)
+	}
+}
+
+func TestParseImageSearchOperators(t *testing.T) {
+	search, err := parseImageSearch("(#cat | #dog) + !#kitten + ![draft] + !'archive'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql, values := compileTestSearch(search.root)
+	if !strings.Contains(sql, " OR ") || strings.Count(sql, "NOT (") != 3 {
+		t.Fatalf("operators were not compiled: %s", sql)
+	}
+	expected := []string{"cat", "dog", "kitten", "draft", "archive"}
+	if strings.Join(values, ",") != strings.Join(expected, ",") {
+		t.Fatalf("unexpected operator values: %#v", values)
+	}
+
+	search, err = parseImageSearch("#cat | #dog + !#kitten")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if search.root.kind != imageSearchOr || search.root.right.kind != imageSearchAnd {
+		t.Fatalf("incorrect operator precedence: %#v", search.root)
+	}
+
+	for _, query := range []string{"!plain", "!", "#cat |", "(#cat", "#cat + )"} {
+		if _, err := parseImageSearch(query); err == nil {
+			t.Fatalf("invalid query accepted: %q", query)
+		}
+	}
+}
+
+func compileTestSearch(node *imageSearchNode) (string, []string) {
+	values := []string{}
+	sql := compileImageSearch(node, func(value any) string {
+		values = append(values, value.(string))
+		return "$" + string(rune('1'+len(values)-1))
+	})
+	return sql, values
+}
+
+func countSearchNodes(node *imageSearchNode, kind imageSearchNodeKind) int {
+	if node == nil {
+		return 0
+	}
+	count := 0
+	if node.kind == kind {
+		count = 1
+	}
+	return count + countSearchNodes(node.left, kind) + countSearchNodes(node.right, kind)
 }

@@ -40,25 +40,12 @@ func (a *application) listImages(w http.ResponseWriter, r *http.Request, current
 		arguments = append(arguments, value)
 		return "$" + strconv.Itoa(len(arguments))
 	}
-	if search.text != "" {
-		placeholder := addArgument(search.text)
-		filters = append(filters, "(lower(i.name) LIKE '%' || "+placeholder+" || '%' OR lower(i.image_path) LIKE '%' || "+placeholder+" || '%')")
-	}
-	for _, tag := range search.tags {
-		placeholder := addArgument(tag)
-		filters = append(filters, "EXISTS (SELECT 1 FROM tag_image ti JOIN tag t ON t.id = ti.tag WHERE ti.image = i.id AND lower(t.name) = "+placeholder+")")
-	}
-	for _, path := range search.paths {
-		placeholder := addArgument(path)
-		filters = append(filters, "lower(i.image_path) LIKE '%' || "+placeholder+" || '%'")
-	}
-	for _, comment := range search.comments {
-		placeholder := addArgument(comment)
-		filters = append(filters, "EXISTS (SELECT 1 FROM message m WHERE m.image = i.id AND lower(m.text) LIKE '%' || "+placeholder+" || '%')")
+	if search.root != nil {
+		filters = append(filters, compileImageSearch(search.root, addArgument))
 	}
 	if tagName != "" {
-		placeholder := addArgument(strings.ToLower(strings.TrimSpace(tagName)))
-		filters = append(filters, "EXISTS (SELECT 1 FROM tag_image ti JOIN tag t ON t.id = ti.tag WHERE ti.image = i.id AND lower(t.name) = "+placeholder+")")
+		placeholder := addArgument(normalizeSearchTerm(tagName))
+		filters = append(filters, "EXISTS (SELECT 1 FROM tag_image ti JOIN tag t ON t.id = ti.tag WHERE ti.image = i.id AND translate(lower(t.name), '_', ' ') = "+placeholder+")")
 	}
 	if query.Get("untagged") == "true" {
 		filters = append(filters, "NOT EXISTS (SELECT 1 FROM tag_image ti WHERE ti.image = i.id)")
@@ -88,61 +75,239 @@ FROM image i LEFT JOIN "user" u ON u.id = i.uploader WHERE `+whereClause+` ORDER
 	writeJSON(w, http.StatusOK, map[string]any{"items": images, "page": page, "limit": limit, "total": total})
 }
 
+func (a *application) listUntaggedImages(w http.ResponseWriter, r *http.Request, currentUser user) {
+	request := r.Clone(r.Context())
+	url := *r.URL
+	request.URL = &url
+	query := request.URL.Query()
+	query.Set("untagged", "true")
+	query.Set("limit", "100000")
+	request.URL.RawQuery = query.Encode()
+	a.listImages(w, request, currentUser)
+}
+
 type imageSearch struct {
-	text     string
-	tags     []string
-	paths    []string
-	comments []string
+	root *imageSearchNode
+}
+
+type imageSearchNodeKind uint8
+
+const (
+	imageSearchText imageSearchNodeKind = iota
+	imageSearchTag
+	imageSearchPath
+	imageSearchComment
+	imageSearchAnd
+	imageSearchOr
+	imageSearchNot
+)
+
+type imageSearchNode struct {
+	kind        imageSearchNodeKind
+	value       string
+	left, right *imageSearchNode
+}
+
+type imageSearchParser struct {
+	value string
+	pos   int
+	terms int
 }
 
 func parseImageSearch(value string) (imageSearch, error) {
 	if len(value) > 1000 {
 		return imageSearch{}, errors.New("query too long")
 	}
-	search := imageSearch{}
-	plain := strings.Builder{}
-	for i := 0; i < len(value); {
-		switch value[i] {
-		case '#':
-			end := i + 1
-			for end < len(value) && !unicode.IsSpace(rune(value[end])) {
-				end++
-			}
-			tag, err := cleanTag(value[i+1 : end])
-			if err != nil {
-				return imageSearch{}, err
-			}
-			search.tags = append(search.tags, tag)
-			i = end
-		case '[', '\'':
-			closing := byte(']')
-			if value[i] == '\'' {
-				closing = '\''
-			}
-			end := strings.IndexByte(value[i+1:], closing)
-			if end < 0 {
-				return imageSearch{}, errors.New("unterminated query term")
-			}
-			term := strings.ToLower(strings.TrimSpace(value[i+1 : i+1+end]))
-			if term == "" || len(term) > 100 {
-				return imageSearch{}, errors.New("invalid query term")
-			}
-			if closing == ']' {
-				search.comments = append(search.comments, term)
-			} else {
-				search.paths = append(search.paths, term)
-			}
-			i += end + 2
-		default:
-			plain.WriteByte(value[i])
-			i++
+	parser := imageSearchParser{value: value}
+	parser.skipSpace()
+	if parser.pos == len(value) {
+		return imageSearch{}, nil
+	}
+	root, err := parser.parseOr()
+	if err != nil {
+		return imageSearch{}, err
+	}
+	parser.skipSpace()
+	if parser.pos != len(value) {
+		return imageSearch{}, errors.New("invalid query term")
+	}
+	return imageSearch{root: root}, nil
+}
+
+func (p *imageSearchParser) parseOr() (*imageSearchNode, error) {
+	left, err := p.parseAnd()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		p.skipSpace()
+		if !p.consume('|') {
+			return left, nil
+		}
+		right, err := p.parseAnd()
+		if err != nil {
+			return nil, err
+		}
+		left = &imageSearchNode{kind: imageSearchOr, left: left, right: right}
+	}
+}
+
+func (p *imageSearchParser) parseAnd() (*imageSearchNode, error) {
+	left, err := p.parseUnary()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		p.skipSpace()
+		if p.peek() == '|' || p.peek() == ')' || p.pos == len(p.value) {
+			return left, nil
+		}
+		p.consume('+')
+		right, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		left = &imageSearchNode{kind: imageSearchAnd, left: left, right: right}
+	}
+}
+
+func (p *imageSearchParser) parseUnary() (*imageSearchNode, error) {
+	p.skipSpace()
+	if p.consume('!') {
+		term, err := p.parsePrimary()
+		if err != nil {
+			return nil, err
+		}
+		if term.kind != imageSearchTag && term.kind != imageSearchPath && term.kind != imageSearchComment {
+			return nil, errors.New("negation requires a tag, comment, or path term")
+		}
+		return &imageSearchNode{kind: imageSearchNot, left: term}, nil
+	}
+	return p.parsePrimary()
+}
+
+func (p *imageSearchParser) parsePrimary() (*imageSearchNode, error) {
+	p.skipSpace()
+	if p.consume('(') {
+		node, err := p.parseOr()
+		if err != nil {
+			return nil, err
+		}
+		p.skipSpace()
+		if !p.consume(')') {
+			return nil, errors.New("unterminated query group")
+		}
+		return node, nil
+	}
+	if p.pos == len(p.value) || p.peek() == ')' || p.peek() == '|' || p.peek() == '+' {
+		return nil, errors.New("missing query term")
+	}
+
+	kind := imageSearchText
+	term := ""
+	switch p.peek() {
+	case '#':
+		p.pos++
+		start := p.pos
+		for p.pos < len(p.value) && !p.delimiter() {
+			p.pos++
+		}
+		var err error
+		term, err = cleanTag(normalizeSearchTerm(p.value[start:p.pos]))
+		if err != nil {
+			return nil, err
+		}
+		kind = imageSearchTag
+	case '[', '\'':
+		opening := p.peek()
+		closing := byte(']')
+		if opening == '\'' {
+			closing = '\''
+		}
+		p.pos++
+		end := strings.IndexByte(p.value[p.pos:], closing)
+		if end < 0 {
+			return nil, errors.New("unterminated query term")
+		}
+		term = normalizeSearchTerm(p.value[p.pos : p.pos+end])
+		p.pos += end + 1
+		if term == "" || len(term) > 100 {
+			return nil, errors.New("invalid query term")
+		}
+		if opening == '[' {
+			kind = imageSearchComment
+		} else {
+			kind = imageSearchPath
+		}
+	default:
+		start := p.pos
+		for p.pos < len(p.value) && !p.delimiter() {
+			p.pos++
+		}
+		term = normalizeSearchTerm(p.value[start:p.pos])
+		if term == "" || len(term) > 100 {
+			return nil, errors.New("invalid query term")
 		}
 	}
-	search.text = strings.ToLower(strings.TrimSpace(plain.String()))
-	if len(search.tags)+len(search.paths)+len(search.comments) > 20 {
-		return imageSearch{}, errors.New("too many query terms")
+	p.terms++
+	if p.terms > 20 {
+		return nil, errors.New("too many query terms")
 	}
-	return search, nil
+	return &imageSearchNode{kind: kind, value: term}, nil
+}
+
+func (p *imageSearchParser) skipSpace() {
+	for p.pos < len(p.value) && unicode.IsSpace(rune(p.value[p.pos])) {
+		p.pos++
+	}
+}
+
+func (p *imageSearchParser) peek() byte {
+	if p.pos == len(p.value) {
+		return 0
+	}
+	return p.value[p.pos]
+}
+
+func (p *imageSearchParser) consume(value byte) bool {
+	if p.peek() != value {
+		return false
+	}
+	p.pos++
+	return true
+}
+
+func (p *imageSearchParser) delimiter() bool {
+	return unicode.IsSpace(rune(p.value[p.pos])) || strings.ContainsRune("!#+|()", rune(p.value[p.pos]))
+}
+
+func compileImageSearch(node *imageSearchNode, addArgument func(any) string) string {
+	switch node.kind {
+	case imageSearchText:
+		placeholder := addArgument(node.value)
+		return "(translate(lower(i.name), '_', ' ') LIKE '%' || " + placeholder + " || '%' OR translate(lower(i.image_path), '_', ' ') LIKE '%' || " + placeholder + " || '%')"
+	case imageSearchTag:
+		placeholder := addArgument(node.value)
+		return "EXISTS (SELECT 1 FROM tag_image ti JOIN tag t ON t.id = ti.tag WHERE ti.image = i.id AND translate(lower(t.name), '_', ' ') = " + placeholder + ")"
+	case imageSearchPath:
+		placeholder := addArgument(node.value)
+		return "translate(lower(i.image_path), '_', ' ') LIKE '%' || " + placeholder + " || '%'"
+	case imageSearchComment:
+		placeholder := addArgument(node.value)
+		return "EXISTS (SELECT 1 FROM message m WHERE m.image = i.id AND translate(lower(m.text), '_', ' ') LIKE '%' || " + placeholder + " || '%')"
+	case imageSearchNot:
+		return "NOT (" + compileImageSearch(node.left, addArgument) + ")"
+	case imageSearchAnd:
+		return "(" + compileImageSearch(node.left, addArgument) + " AND " + compileImageSearch(node.right, addArgument) + ")"
+	case imageSearchOr:
+		return "(" + compileImageSearch(node.left, addArgument) + " OR " + compileImageSearch(node.right, addArgument) + ")"
+	default:
+		return "FALSE"
+	}
+}
+
+func normalizeSearchTerm(value string) string {
+	return strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "_", " ")))
 }
 
 func (a *application) getImage(w http.ResponseWriter, r *http.Request, currentUser user) {
@@ -190,10 +355,7 @@ func (a *application) scanImages(ctx context.Context, rows pgx.Rows, userID int3
 		item.MediaURL = a.mediaPath(item.Path)
 		item.FileURL = "/api/images/" + strconv.Itoa(int(item.ID)) + "/file"
 		item.Kind = mediaKind(item.Path)
-		item.ThumbURL = item.MediaURL
-		if item.Kind == "image" {
-			item.ThumbURL = "/thumbnail/" + encodedPath(item.Path) + "/small"
-		}
+		item.ThumbURL = "/thumbnail/" + encodedPath(item.Path) + "/small"
 		item.Tags, item.Comments = []string{}, []comment{}
 		images, imageIDs = append(images, item), append(imageIDs, item.ID)
 	}
@@ -371,10 +533,7 @@ func (a *application) explore(w http.ResponseWriter, r *http.Request, _ user) {
 		}
 		kind, size := mediaKind(directoryEntry.Name()), info.Size()
 		media := a.mediaPath(path)
-		thumb := media
-		if kind == "image" {
-			thumb = "/thumbnail/" + encodedPath(path) + "/small"
-		}
+		thumb := "/thumbnail/" + encodedPath(path) + "/small"
 		result = append(result, entry{Name: directoryEntry.Name(), Path: path, Type: kind, MediaURL: &media, ThumbnailURL: &thumb, Size: &size})
 		mediaPaths = append(mediaPaths, path)
 	}
