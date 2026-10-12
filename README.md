@@ -84,9 +84,10 @@ docker compose -p imageboard-database -f docker-compose.database.yml up -d
 Delete `imageboard_postgres-data` only when permanent data deletion is intended. Persistent volumes are not backups; take regular logical backups outside the repository:
 
 ```bash
-(umask 077; docker compose -p imageboard-database -f docker-compose.database.yml exec -T database \
-  pg_dump -U imageboard -d imageboard -Fc > /path/to/secure-backups/imageboard.dump)
+./backup_database.sh /path/to/secure-backups
 ```
+
+The script creates a UTC-timestamped `.tar.bz2` archive containing a plain SQL dump with owner-only permissions. Restore with `tar -xOjf backup.tar.bz2 | psql -U imageboard -d imageboard` in a compatible PostgreSQL container.
 
 ## Tor hidden service
 

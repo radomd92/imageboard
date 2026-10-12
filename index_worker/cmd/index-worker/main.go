@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -34,9 +36,11 @@ type job struct {
 }
 
 type mediaFile struct {
-	path string
-	name string
-	size int64
+	path     string
+	diskPath string
+	name     string
+	size     int64
+	modified time.Time
 }
 
 type counters struct {
@@ -50,11 +54,13 @@ type counters struct {
 }
 
 type worker struct {
-	pool      *pgxpool.Pool
-	mediaRoot string
-	batchSize int
-	workerID  string
-	log       *slog.Logger
+	pool                   *pgxpool.Pool
+	mediaRoot              string
+	batchSize              int
+	workerID               string
+	log                    *slog.Logger
+	thumbnailEncryptionKey [32]byte
+	thumbnailCacheKey      [32]byte
 }
 
 func main() {
@@ -71,12 +77,15 @@ func main() {
 		fatal("database unavailable", err)
 	}
 
+	secret := requiredEnv("IMAGEBOARD_SECRET_KEY")
 	w := worker{
-		pool:      pool,
-		mediaRoot: requiredEnv("IMAGEBOARD_MEDIA_ROOT"),
-		batchSize: envInt("INDEX_BATCH_SIZE", defaultBatchSize),
-		workerID:  workerIdentity(),
-		log:       slog.New(slog.NewJSONHandler(os.Stdout, nil)),
+		pool:                   pool,
+		mediaRoot:              requiredEnv("IMAGEBOARD_MEDIA_ROOT"),
+		batchSize:              envInt("INDEX_BATCH_SIZE", defaultBatchSize),
+		workerID:               workerIdentity(),
+		log:                    slog.New(slog.NewJSONHandler(os.Stdout, nil)),
+		thumbnailEncryptionKey: derivedKey(secret, "thumbnail encryption v1"),
+		thumbnailCacheKey:      derivedKey(secret, "thumbnail cache key v1"),
 	}
 	w.log.Info("index worker started")
 	w.run(ctx)
@@ -224,7 +233,7 @@ func (w *worker) process(ctx context.Context, job job) {
 				return nil
 			}
 			counts.discovered++
-			files = append(files, mediaFile{path: strings.Join(parts, "$"), name: entry.Name(), size: fileInfo.Size()})
+			files = append(files, mediaFile{path: strings.Join(parts, "$"), diskPath: path, name: entry.Name(), size: fileInfo.Size(), modified: fileInfo.ModTime().UTC().Truncate(time.Microsecond)})
 			if len(files) >= w.batchSize && !flush() {
 				return errStop
 			}
@@ -232,7 +241,7 @@ func (w *worker) process(ctx context.Context, job job) {
 		})
 	} else if info.Mode().IsRegular() && supportedMedia(filepath.Base(root)) {
 		counts.discovered = 1
-		files = append(files, mediaFile{path: job.rootPath, name: filepath.Base(root), size: info.Size()})
+		files = append(files, mediaFile{path: job.rootPath, diskPath: root, name: filepath.Base(root), size: info.Size(), modified: info.ModTime().UTC().Truncate(time.Microsecond)})
 	} else {
 		complete = false
 		counts.errors++
@@ -315,7 +324,29 @@ SET file_size = EXCLUDED.file_size, last_index_job = EXCLUDED.last_index_job`, p
 		return err
 	}
 	counts.processed += int64(len(files))
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	for _, file := range files {
+		if !isVideo(file.name) {
+			continue
+		}
+		if err := w.renewLease(ctx, job); err != nil {
+			return err
+		}
+		if err := w.ensureVideoThumbnail(ctx, file); err != nil {
+			w.log.Warn("video thumbnail generation failed", "path", file.path, "error", err)
+		}
+	}
+	return nil
+}
+
+func (w *worker) renewLease(ctx context.Context, job job) error {
+	command, err := w.pool.Exec(ctx, "UPDATE index_job SET lease_expires_at = NOW() + $2::interval WHERE id = $1 AND status = 'running' AND worker_id = $3", job.id, interval(leaseDuration), w.workerID)
+	if err != nil || command.RowsAffected() != 1 {
+		return errors.New("index job lease lost")
+	}
+	return nil
 }
 
 func (w *worker) deindexStale(ctx context.Context, job job) (int64, error) {
@@ -431,8 +462,25 @@ func supportedMedia(name string) bool {
 	}
 }
 
+func isVideo(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".avi", ".m4v", ".mpe", ".mpeg", ".mpg", ".mov", ".mp4", ".webm", ".wmv":
+		return true
+	default:
+		return false
+	}
+}
+
 func normalizeDatabaseURL(value string) string {
 	return strings.Replace(value, "postgresql+psycopg://", "postgres://", 1)
+}
+
+func derivedKey(secret, label string) [32]byte {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(label))
+	var key [32]byte
+	copy(key[:], mac.Sum(nil))
+	return key
 }
 
 func requiredEnv(name string) string {

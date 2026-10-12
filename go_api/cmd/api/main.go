@@ -139,6 +139,7 @@ func (a *application) routes() http.Handler {
 		apiRouter.Get("/internal/authorize", a.withAuth(a.authorizeMedia))
 		apiRouter.Get("/me", a.withAuth(a.me))
 		apiRouter.Get("/images", a.withAuth(a.listImages))
+		apiRouter.Get("/images/untagged", a.withAuth(a.listUntaggedImages))
 		apiRouter.Get("/tags", a.withAuth(a.listTags))
 		apiRouter.Get("/dashboard", a.withAuth(a.dashboard))
 		apiRouter.Get("/explore", a.withAdmin(a.explore))

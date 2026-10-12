@@ -45,7 +45,7 @@ func (a *application) thumbnail(w http.ResponseWriter, r *http.Request, currentU
 		return
 	}
 	media, err := a.existingPath(canonicalPath)
-	if err != nil || !media.info.Mode().IsRegular() || !supportedMedia(canonicalPath) || mediaKind(canonicalPath) != "image" {
+	if err != nil || !media.info.Mode().IsRegular() || !supportedMedia(canonicalPath) {
 		writeError(w, http.StatusNotFound, "Thumbnail not found")
 		return
 	}
@@ -69,6 +69,10 @@ func (a *application) thumbnail(w http.ResponseWriter, r *http.Request, currentU
 		return
 	}
 	if !found {
+		if mediaKind(canonicalPath) == "video" {
+			writeError(w, http.StatusNotFound, "Thumbnail is being generated")
+			return
+		}
 		thumbnail, err = generateThumbnail(media.path, variant, variant)
 		if err != nil {
 			writeError(w, http.StatusUnsupportedMediaType, "Thumbnail unavailable")
