@@ -79,7 +79,7 @@ jobs:
         working-directory: ${{ matrix.module }}
         env:
           IMAGEBOARD_TEST_DATABASE_URL: postgresql://imageboard_test:imageboard_test@127.0.0.1:5432/imageboard_test
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.1.0
           working-directory: ${{ matrix.module }}
