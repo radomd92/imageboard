@@ -256,6 +256,51 @@ func TestAccountManagementIntegration(t *testing.T) {
 	if err := json.Unmarshal(body, &media); err != nil || len(media.Comments) != 2 || media.Comments[0].AuthorID == nil {
 		t.Fatalf("missing comment author links: %s", body)
 	}
+	t.Run("large comments", func(t *testing.T) {
+		request := func(target *application, name, pass, method, path string, body any, want int) []byte {
+			t.Helper()
+			w := accountTestRequest(target, name, pass, method, path, body)
+			if w.Code != want {
+				t.Fatalf("%s %s: got %d, want %d", method, path, w.Code, want)
+			}
+			return w.Body.Bytes()
+		}
+		for _, endpoint := range []struct{ path, field string }{{"comments", "text"}, {"context", "comment"}} {
+			path := fmt.Sprintf("/api/images/%d/%s", imageIDs[0], endpoint.path)
+			for _, text := range []string{strings.Repeat("a", 1000), strings.Repeat("a", 8192), strings.Repeat("é", 4096)} {
+				response := request(app, "member", password, "POST", path, map[string]string{endpoint.field: text}, 200)
+				var item image
+				if err := json.Unmarshal(response, &item); err != nil {
+					t.Fatal(err)
+				}
+				last := item.Comments[len(item.Comments)-1]
+				if last.Text != text || last.AuthorID == nil || *last.AuthorID != memberID {
+					t.Fatal("long comment was truncated or attributed to the wrong author")
+				}
+			}
+			for _, text := range []string{strings.Repeat("a", 8193), strings.Repeat("é", 4097)} {
+				request(app, "member", password, "POST", path, map[string]string{endpoint.field: text}, 422)
+			}
+			// Escaped Unicode can exceed 8 KiB of JSON for valid 8 KiB text.
+			escaped := json.RawMessage(`{"` + endpoint.field + `":"` + strings.Repeat(`\u00e9`, 4096) + `"}`)
+			request(app, "member", password, "POST", path, escaped, 200)
+		}
+		request(app, "member", password, "POST", fmt.Sprintf("/api/images/%d/comments", imageIDs[0]), map[string]any{"text": strings.Repeat("r", 8192), "reply_to": commentIDs[0]}, 200)
+		// A combined escaped comment and full tag set fits the enrichment budget.
+		tags := []string{}
+		for i := 0; i < 50; i++ {
+			tags = append(tags, fmt.Sprintf("%02d", i)+strings.Repeat("é", 49))
+		}
+		combined, err := json.Marshal(map[string]any{"comment": strings.Repeat("é", 4096), "tags": tags})
+		if err != nil {
+			t.Fatal(err)
+		}
+		combined = bytes.ReplaceAll(combined, []byte("é"), []byte(`\u00e9`))
+		request(app, "root-admin", password, "POST", fmt.Sprintf("/api/images/%d/context", imageIDs[0]), json.RawMessage(combined), 200)
+		if _, err := pool.Exec(ctx, `INSERT INTO message (from_user, image, text, message_date) VALUES ($1, $2, $3, NOW())`, memberID, imageIDs[0], strings.Repeat("é", 4097)); err == nil {
+			t.Fatal("database did not enforce the UTF-8 byte limit")
+		}
+	})
 	// Concurrent self-demotions may leave exactly one active admin, never zero.
 	otherAdminID := insertUser("other-admin", "admin")
 	statuses := make(chan int, 2)

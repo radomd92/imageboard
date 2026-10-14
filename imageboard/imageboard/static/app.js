@@ -1,4 +1,5 @@
 const THEMES = ["rorisu", "macos", "win98", "classic"];
+const MAX_COMMENT_BYTES = 8 * 1024;
 const state = {
   view: "home",
   page: 1,
@@ -383,7 +384,7 @@ async function inspect(id, commentID = null) {
   const source = state.readOnly ? item.media_url : item.file_url;
   const commentForm = state.readOnly
     ? ""
-    : `<form id="comment-form" class="edit-form"><input type="hidden" name="reply_to"><label id="reply-label">Add context<textarea name="text" maxlength="500" required></textarea></label><button class="button">Post Comment</button></form>`;
+    : `<form id="comment-form" class="edit-form"><input type="hidden" name="reply_to"><label id="reply-label">Add context<textarea name="text" maxlength="${MAX_COMMENT_BYTES}" aria-describedby="comment-limit" required></textarea></label><small id="comment-limit">Up to 8 KiB of UTF-8 text (8,192 bytes).</small><button class="button">Post Comment</button></form>`;
   const favorite = state.readOnly
     ? ""
     : `<button class="button favorite-action" data-favorite="${item.id}" data-active="${item.favorite}">${item.favorite ? "★ Remove Favorite" : "☆ Add Favorite"}</button>`;
@@ -430,6 +431,10 @@ async function inspect(id, commentID = null) {
     };
   const comments = el("comment-form");
   if (comments) {
+    comments.text.addEventListener("input", () => {
+      const bytes = new TextEncoder().encode(comments.text.value.trim()).length;
+      comments.text.setCustomValidity(bytes > MAX_COMMENT_BYTES ? "Comment exceeds 8 KiB (8,192 UTF-8 bytes)." : "");
+    });
     el("comment-list").onclick = (event) => {
       if (event.target.dataset.reply) {
         comments.reply_to.value = event.target.dataset.reply;
@@ -439,6 +444,7 @@ async function inspect(id, commentID = null) {
     };
     comments.onsubmit = async (event) => {
       event.preventDefault();
+      if (!comments.reportValidity()) return;
       const form = new FormData(event.target);
       try {
         await api(`/api/images/${id}/comments`, {

@@ -113,7 +113,7 @@ The onion identity and private keys live in the `tor-data` volume. Preserve that
 
 All `/api` and `/media` requests require HTTP Basic authentication. Use TLS for direct access, or Tor-encrypted transport for the onion endpoint as described above.
 
-`POST /api/images/{id}/context` accepts JSON bodies up to 8 KiB (8,192 bytes), including tags and comments for context enrichment. Individual comment length and tag length/count limits still apply.
+Comment text accepts up to **8 KiB (8,192 UTF-8 bytes)** after trimming surrounding whitespace. Both `POST /api/images/{id}/context` and `POST /api/images/{id}/comments` accept JSON bodies up to 48 KiB, allowing JSON-escaped Unicode comments plus context tags. Tag length/count limits still apply. Oversize comment text returns `422`; oversize request bodies are rejected by Nginx with `413`.
 
 ```bash
 curl --user user:password https://host:8443/api/images/42
@@ -121,9 +121,14 @@ curl --user user:password -L https://host:8443/api/images/42/file -o image
 curl --user user:password -X POST https://host:8443/api/images/42/context \
   -H 'content-type: application/json' \
   -d '{"tags":["travel","sunset"],"comment":"Taken at dusk"}'
+curl --user user -X POST https://host:8443/api/images/42/comments \
+  -H 'content-type: application/json' \
+  -d '{"text":"Taken at dusk"}'
 ```
 
 `GET /api/images/{id}` returns image metadata, tags, comments, and direct media URL. `GET /api/images/{id}/file` increments view count then redirects to protected Nginx media. `POST /api/images/{id}/context` replaces tags when `tags` supplied and appends comment when `comment` supplied.
+
+`POST /api/images/{id}/comments` appends a comment using `text`; optional `reply_to` selects a parent comment on the same image. Any authenticated user may comment, with authorship derived from HTTP Basic identity. Only administrators may update tags. Comment writes remain unavailable on Tor.
 
 Account endpoints:
 

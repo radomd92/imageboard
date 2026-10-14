@@ -21,7 +21,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const maxContextRequestBytes = 8 * 1024
+const (
+	maxCommentTextBytes = 8 * 1024
+	// JSON escaping can triple UTF-8 size; leave room for tags and replies.
+	maxCommentRequestBytes = 48 * 1024
+)
 
 func (a *application) listImages(w http.ResponseWriter, r *http.Request, currentUser user) {
 	query := r.URL.Query()
@@ -821,7 +825,7 @@ func (a *application) contextUpdate(w http.ResponseWriter, r *http.Request, user
 		Tags    *[]string `json:"tags"`
 		Comment *string   `json:"comment"`
 	}
-	if !decodeJSONWithLimit(w, r, &body, maxContextRequestBytes) {
+	if !decodeJSONWithLimit(w, r, &body, maxCommentRequestBytes) {
 		return
 	}
 	if body.Tags == nil && body.Comment == nil {
@@ -878,8 +882,8 @@ func (a *application) contextUpdate(w http.ResponseWriter, r *http.Request, user
 	}
 	if body.Comment != nil {
 		text := strings.TrimSpace(*body.Comment)
-		if text == "" || len(text) > 500 || containsControl(text) {
-			writeError(w, 422, "Invalid comment")
+		if text == "" || len(text) > maxCommentTextBytes || containsControl(text) {
+			writeError(w, 422, "Comment must contain 1–8192 UTF-8 bytes without control characters")
 			return
 		}
 		if _, err := tx.Exec(r.Context(), "INSERT INTO message (from_user, image, text, reply_to, message_date) VALUES ($1, $2, $3, NULL, NOW())", user.ID, id, text); err != nil {
@@ -942,12 +946,12 @@ func (a *application) addComment(w http.ResponseWriter, r *http.Request, user us
 		Text    string `json:"text"`
 		ReplyTo *int32 `json:"reply_to"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !decodeJSONWithLimit(w, r, &body, maxCommentRequestBytes) {
 		return
 	}
 	text := strings.TrimSpace(body.Text)
-	if text == "" || len(text) > 500 || containsControl(text) {
-		writeError(w, 422, "Invalid comment")
+	if text == "" || len(text) > maxCommentTextBytes || containsControl(text) {
+		writeError(w, 422, "Comment must contain 1–8192 UTF-8 bytes without control characters")
 		return
 	}
 	if body.ReplyTo != nil {

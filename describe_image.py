@@ -138,7 +138,7 @@ def download_image(image_url: str, max_bytes: int, timeout: float, headers: dict
         }.get(suffix, "")
     if not content_type:
         raise ValueError("download did not identify itself as an image")
- moved   return data, content_type
+    return data, content_type
 
 
 def post_json(endpoint: str, payload: dict, timeout: float) -> dict:
@@ -257,7 +257,7 @@ def normalize_result(text: str) -> dict[str, object]:
         result = json.loads(text)
     except json.JSONDecodeError:
         result = {"description": text, "tags": []}
-    description = " ".join(str(result.get("description", "")).split())[:500]
+    description = " ".join(str(result.get("description", "")).split()).encode("utf-8")[:8192].decode("utf-8", errors="ignore")
     tags: list[str] = []
     for value in result.get("tags", []):
         tag = " ".join(str(value).lower().split())
