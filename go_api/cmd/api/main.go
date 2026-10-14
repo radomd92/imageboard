@@ -159,6 +159,7 @@ func (a *application) routes() http.Handler {
 		apiRouter.Get("/index-jobs/{id}", a.withAdmin(a.getJob))
 		apiRouter.Post("/index-jobs/{id}/cancel", a.withAdmin(a.cancelJob))
 		apiRouter.Get("/images/{id}", a.withAuth(a.getImage))
+		apiRouter.Get("/images/{id}/similar", a.withAuth(a.similarImages))
 		apiRouter.Put("/images/{id}/favorite", a.withAuth(a.favoriteImage))
 		apiRouter.Delete("/images/{id}/favorite", a.withAuth(a.unfavoriteImage))
 		apiRouter.Get("/images/{id}/file", a.withAuth(a.getImageFile))

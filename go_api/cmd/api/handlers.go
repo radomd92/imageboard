@@ -454,7 +454,7 @@ func (a *application) listTags(w http.ResponseWriter, r *http.Request, _ user) {
 	writeJSON(w, 200, result)
 }
 
-func (a *application) dashboard(w http.ResponseWriter, r *http.Request, _ user) {
+func (a *application) dashboard(w http.ResponseWriter, r *http.Request, currentUser user) {
 	var total, untagged int64
 	if err := a.pool.QueryRow(r.Context(), "SELECT count(*) FROM image").Scan(&total); err != nil {
 		writeError(w, 500, "Database unavailable")
@@ -480,7 +480,18 @@ func (a *application) dashboard(w http.ResponseWriter, r *http.Request, _ user) 
 		}
 		tags = append(tags, map[string]any{"name": name, "hits": hits})
 	}
-	writeJSON(w, 200, map[string]any{"total": total, "untagged": untagged, "popular_tags": tags})
+	if rows.Err() != nil {
+		writeError(w, 500, "Database unavailable")
+		return
+	}
+	rows.Close()
+	rankings, err := a.rankedImages(r.Context(), currentUser)
+	if err != nil {
+		writeError(w, 500, "Database unavailable")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"total": total, "untagged": untagged, "popular_tags": tags,
+		"most_viewed": rankings["most_viewed"], "most_commented": rankings["most_commented"], "most_favorited": rankings["most_favorited"]})
 }
 
 func (a *application) explore(w http.ResponseWriter, r *http.Request, _ user) {

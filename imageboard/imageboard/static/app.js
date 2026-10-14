@@ -13,6 +13,10 @@ const state = {
   readOnly: location.hostname.endsWith(".onion"),
   indexedFolders: new Set(),
   indexJobs: new Set(),
+  inspectorRequest: 0,
+  inspectorID: null,
+  inspectorController: null,
+  similarTimer: null,
 };
 const el = (id) => document.getElementById(id);
 const sidebar = el("sidebar");
@@ -28,7 +32,8 @@ function setDrawer(open) {
     "aria-label",
     isOpen ? "Close navigation" : "Open navigation",
   );
-  if (isOpen) requestAnimationFrame(() => sidebar.querySelector("nav button")?.focus());
+  if (isOpen)
+    requestAnimationFrame(() => sidebar.querySelector("nav button")?.focus());
 }
 setDrawer(false);
 const esc = (value) =>
@@ -64,12 +69,17 @@ const size = (bytes) =>
       : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 const tagLinks = (tags) =>
   tags.length
-    ? tags.map((tag) => `<button class="tag-link" type="button" data-tag="${esc(tag)}">${esc(tag)}</button>`).join(" · ")
+    ? tags
+        .map(
+          (tag) =>
+            `<button class="tag-link" type="button" data-tag="${esc(tag)}">${esc(tag)}</button>`,
+        )
+        .join(" · ")
     : "untagged";
-const mediaCard = (item) =>
-  `<article class="media-card"><button class="favorite-toggle" data-favorite="${item.id}" data-active="${item.favorite}" title="${item.favorite ? "Remove favorite" : "Add favorite"}">${item.favorite ? "★" : "☆"}</button><div class="media-open" data-image="${item.id}" role="button" tabindex="0"><div class="media-preview">${item.kind === "video" ? `<div class="video-placeholder">VIDEO</div><img class="video-thumbnail" loading="lazy" src="${item.thumbnail_url}" alt="">` : `<img loading="lazy" src="${item.thumbnail_url}" alt="">`}<span class="media-type">${item.kind.toUpperCase()}</span></div><div class="card-info"><strong>${esc(item.name)}</strong><small>${size(item.file_size)} · ${item.hits} views</small><div class="tag-line">${tagLinks(item.tags)}</div></div></div></article>`;
-const cards = (items) =>
-  `<div class="media-grid">${items.length ? items.map(mediaCard).join("") : '<div class="empty">Nothing found in this view.</div>'}</div>`;
+const mediaCard = (item, metric = "") =>
+  `<article class="media-card">${state.readOnly ? "" : `<button type="button" class="favorite-toggle" data-favorite="${item.id}" data-active="${item.favorite}" aria-pressed="${item.favorite}" title="${item.favorite ? "Remove favorite" : "Add favorite"}">${item.favorite ? "★" : "☆"}</button>`}<button type="button" class="media-open" data-image="${item.id}" aria-label="Open ${esc(item.name)}"><div class="media-preview">${item.kind === "video" ? `<div class="video-placeholder">VIDEO</div><img class="video-thumbnail" loading="lazy" src="${item.thumbnail_url}" alt="">` : `<img loading="lazy" src="${item.thumbnail_url}" alt="">`}<span class="media-type">${item.kind.toUpperCase()}</span></div><div class="card-info"><strong>${esc(item.name)}</strong><small>${size(item.file_size)} · ${item.hits} views</small>${metric ? `<small class="ranking-count"><span data-count-image="${item.id}" data-count="${metric}">${metric === "comments" ? item.comment_count : metric === "favorites" ? item.favorite_count : item.hits}</span> ${metric}</small>` : ""}</div></button><div class="tag-line">${tagLinks(item.tags)}</div></article>`;
+const cards = (items, metric = "") =>
+  `<div class="media-grid">${items.length ? items.map((item) => mediaCard(item, metric)).join("") : '<div class="empty">Nothing found in this view.</div>'}</div>`;
 const header = (title, subtitle, action = "") =>
   `<div class="view-header"><div><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div>${action}</div>`;
 
@@ -105,9 +115,10 @@ async function renderHome() {
     api("/api/dashboard"),
     loadImages({ limit: 8 }),
   ]);
+  if (state.view !== "home") return;
   el("path").textContent = "Paradise HD : Dashboard";
   el("view").innerHTML =
-    `${header("Welcome to Paradise", "Private media catalog and context archive")}<div class="stats"><div class="stat"><strong>${dashboard.total}</strong><span>INDEXED MEDIA</span></div><div class="stat"><strong>${dashboard.untagged}</strong><span>NEEDS TAGS</span></div><div class="stat"><strong>${dashboard.popular_tags.length}</strong><span>ACTIVE TAGS / 30 DAYS</span></div></div><div class="section-title"><h3>RECENTLY INDEXED</h3><button class="button" data-go="library">View All</button></div>${cards(recent.items)}<div class="section-title"><h3>POPULAR TAGS</h3></div><div class="tag-grid">${dashboard.popular_tags.length ? dashboard.popular_tags.map((t) => `<button class="tag-card" data-tag="${esc(t.name)}"><strong>${esc(t.name)}</strong><span>${t.hits} hits</span></button>`).join("") : "<p>No view history yet.</p>"}</div>`;
+    `${header("Welcome to Paradise", "Private media catalog and context archive")}<div class="stats"><div class="stat"><strong>${dashboard.total}</strong><span>INDEXED MEDIA</span></div><div class="stat"><strong>${dashboard.untagged}</strong><span>NEEDS TAGS</span></div><div class="stat"><strong>${dashboard.popular_tags.length}</strong><span>ACTIVE TAGS / 30 DAYS</span></div></div><section aria-label="Most viewed"><div class="section-title"><h3>MOST VIEWED</h3><small>ALL TIME</small></div>${cards(dashboard.most_viewed, "views")}</section><section aria-label="Most commented"><div class="section-title"><h3>MOST COMMENTED</h3><small>INCLUDING REPLIES</small></div>${cards(dashboard.most_commented, "comments")}</section><section aria-label="Most favorited"><div class="section-title"><h3>MOST FAVORITED</h3><small>ACTIVE FAVORITES</small></div>${cards(dashboard.most_favorited, "favorites")}</section><div class="section-title"><h3>RECENTLY INDEXED</h3><button class="button" data-go="library">View All</button></div>${cards(recent.items)}<div class="section-title"><h3>POPULAR TAGS</h3></div><div class="tag-grid">${dashboard.popular_tags.length ? dashboard.popular_tags.map((t) => `<button class="tag-card" data-tag="${esc(t.name)}"><strong>${esc(t.name)}</strong><span>${t.hits} hits</span></button>`).join("") : "<p>No view history yet.</p>"}</div>`;
   el("status").textContent =
     `${dashboard.total} items, ${dashboard.untagged} awaiting context`;
 }
@@ -146,18 +157,28 @@ async function refreshMe() {
   state.me = await api("/api/me");
   el("username").textContent = state.me.name;
   el("username").href = `#/users/${state.me.id}`;
-  el("role").textContent = `${state.me.admin ? "ADMINISTRATOR" : "MEMBER"}${state.readOnly ? " · MEDIA READ ONLY" : ""}`;
+  el("role").textContent =
+    `${state.me.admin ? "ADMINISTRATOR" : "MEMBER"}${state.readOnly ? " · MEDIA READ ONLY" : ""}`;
   document.querySelectorAll(".admin-only").forEach((node) => {
-    node.classList.toggle("hidden", !state.me.admin || (state.readOnly && !node.classList.contains("account-admin")));
+    node.classList.toggle(
+      "hidden",
+      !state.me.admin ||
+        (state.readOnly && !node.classList.contains("account-admin")),
+    );
   });
 }
 
-const passwordFields = () => `<label>New password<input name="password" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label><label>Confirm password<input name="confirmation" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label><p>14–256 characters. Passwords are stored as salted scrypt hashes.</p>`;
-const accountRequest = (url, method, body) => api(url, {
-  method,
-  headers: { "content-type": "application/json", "X-Imageboard-Request": "account" },
-  body: JSON.stringify(body),
-});
+const passwordFields = () =>
+  `<label>New password<input name="password" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label><label>Confirm password<input name="confirmation" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label><p>14–256 characters. Passwords are stored as salted scrypt hashes.</p>`;
+const accountRequest = (url, method, body) =>
+  api(url, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "X-Imageboard-Request": "account",
+    },
+    body: JSON.stringify(body),
+  });
 
 function bindAccountForm(form, submit) {
   form.onsubmit = async (event) => {
@@ -165,7 +186,10 @@ function bindAccountForm(form, submit) {
     const errorBox = form.querySelector(".form-error");
     errorBox.textContent = "";
     const data = new FormData(form);
-    if (data.has("confirmation") && data.get("password") !== data.get("confirmation")) {
+    if (
+      data.has("confirmation") &&
+      data.get("password") !== data.get("confirmation")
+    ) {
       errorBox.textContent = "Passwords do not match.";
       return;
     }
@@ -183,7 +207,8 @@ function bindAccountForm(form, submit) {
 
 function showReauthentication(message) {
   if (el("password-reset").open) el("password-reset").close();
-  el("view").innerHTML = `${header("Account updated", message)}<p>Sign in again through browser HTTP authentication. If browser keeps sending old credentials, close authenticated browser session and reopen site.</p><button id="reauthenticate" type="button" class="button">Sign In Again</button>`;
+  el("view").innerHTML =
+    `${header("Account updated", message)}<p>Sign in again through browser HTTP authentication. If browser keeps sending old credentials, close authenticated browser session and reopen site.</p><button id="reauthenticate" type="button" class="button">Sign In Again</button>`;
   el("reauthenticate").onclick = () => location.reload();
   notice(message);
 }
@@ -191,16 +216,21 @@ function showReauthentication(message) {
 async function renderUsers() {
   // API remains the authority even when frontend identity is stale.
   const routeHash = location.hash;
-  const data = await api(`/api/admin/users?${new URLSearchParams({ page: state.page, q: state.userQuery })}`);
+  const data = await api(
+    `/api/admin/users?${new URLSearchParams({ page: state.page, q: state.userQuery })}`,
+  );
   if (state.view !== "users" || location.hash !== routeHash) return;
   el("path").textContent = "Paradise HD : Users";
-  el("view").innerHTML = `${header("Users", `${data.total} accounts · administrator access`)}
+  el("view").innerHTML =
+    `${header("Users", `${data.total} accounts · administrator access`)}
     <form id="user-search" class="account-search"><label>Find username<input name="q" type="search" maxlength="100" value="${esc(state.userQuery)}"></label><button class="button" type="submit">Search</button></form>
     <div class="account-table-wrap"><table class="account-table"><thead><tr><th>Username</th><th>Permissions and status</th><th>Password</th></tr></thead><tbody>${data.items.map((item) => `<tr><td><a href="#/users/${item.id}">${esc(item.name)}</a><small>Joined ${new Date(item.registered).toLocaleDateString()}</small></td><td><form class="account-status" data-user-id="${item.id}"><label><input type="checkbox" name="admin" ${item.admin ? "checked" : ""}> Admin</label><label><input type="checkbox" name="disabled" ${item.disabled ? "checked" : ""}> Disabled</label><button class="button" type="submit">Save</button><p class="form-error" role="alert"></p></form></td><td><button type="button" class="button" data-reset-user="${item.id}">Reset Password</button></td></tr>`).join("") || '<tr><td colspan="3">No accounts found.</td></tr>'}</tbody></table></div>
     <div class="pager"><button class="button" type="button" id="users-previous" ${data.page <= 1 ? "disabled" : ""}>Previous</button><span>Page ${data.page} of ${Math.max(1, Math.ceil(data.total / data.limit))}</span><button class="button" type="button" id="users-next" ${data.page * data.limit >= data.total ? "disabled" : ""}>Next</button></div>
     <form id="create-user" class="edit-form account-form"><h3>Create User</h3><label>Username<input name="name" minlength="3" maxlength="100" autocomplete="off" required></label>${passwordFields()}<label class="checkbox-label"><input name="admin" type="checkbox"> Administrator</label><p class="form-error" role="alert"></p><button class="button" type="submit">Create User</button></form>`;
   el("status").textContent = `${data.total} accounts`;
-  const usersRoute = (page, q = state.userQuery) => { location.hash = `#/users?${new URLSearchParams({ page, q })}`; };
+  const usersRoute = (page, q = state.userQuery) => {
+    location.hash = `#/users?${new URLSearchParams({ page, q })}`;
+  };
   el("user-search").onsubmit = (event) => {
     event.preventDefault();
     usersRoute(1, new FormData(event.target).get("q"));
@@ -209,19 +239,37 @@ async function renderUsers() {
   el("users-next").onclick = () => usersRoute(data.page + 1);
   const createForm = el("create-user");
   bindAccountForm(createForm, async (form) => {
-    await accountRequest("/api/admin/users", "POST", { name: form.get("name"), password: form.get("password"), admin: form.has("admin") });
+    await accountRequest("/api/admin/users", "POST", {
+      name: form.get("name"),
+      password: form.get("password"),
+      admin: form.has("admin"),
+    });
     createForm.reset();
     notice("User created.");
     if (state.view === "users") await renderUsers();
   });
   document.querySelectorAll(".account-status").forEach((form) => {
-    const item = data.items.find((item) => item.id === Number(form.dataset.userId));
+    const item = data.items.find(
+      (item) => item.id === Number(form.dataset.userId),
+    );
     bindAccountForm(form, async (fields) => {
       const disabled = fields.has("disabled");
-      if (disabled && !item.disabled && !confirm(`Disable ${item.name}? Access stops immediately; comments remain.`)) return;
-      await accountRequest(`/api/admin/users/${item.id}`, "PATCH", { admin: fields.has("admin"), disabled });
+      if (
+        disabled &&
+        !item.disabled &&
+        !confirm(
+          `Disable ${item.name}? Access stops immediately; comments remain.`,
+        )
+      )
+        return;
+      await accountRequest(`/api/admin/users/${item.id}`, "PATCH", {
+        admin: fields.has("admin"),
+        disabled,
+      });
       if (item.id === state.me.id && disabled) {
-        showReauthentication("Your account is now disabled. Sign in with another active account.");
+        showReauthentication(
+          "Your account is now disabled. Sign in with another active account.",
+        );
         return;
       }
       await refreshMe();
@@ -232,16 +280,24 @@ async function renderUsers() {
   });
   document.querySelectorAll("[data-reset-user]").forEach((button) => {
     button.onclick = () => {
-      const item = data.items.find((item) => item.id === Number(button.dataset.resetUser));
+      const item = data.items.find(
+        (item) => item.id === Number(button.dataset.resetUser),
+      );
       const form = el("password-reset-form");
       form.reset();
       form.querySelector(".form-error").textContent = "";
-      el("password-reset-user").textContent = `Set new password for ${item.name}.`;
+      el("password-reset-user").textContent =
+        `Set new password for ${item.name}.`;
       bindAccountForm(form, async (fields) => {
-        await accountRequest(`/api/admin/users/${item.id}/password`, "PUT", { password: fields.get("password") });
+        await accountRequest(`/api/admin/users/${item.id}/password`, "PUT", {
+          password: fields.get("password"),
+        });
         form.reset();
         el("password-reset").close();
-        if (item.id === state.me.id) showReauthentication("Password changed. Old password no longer works.");
+        if (item.id === state.me.id)
+          showReauthentication(
+            "Password changed. Old password no longer works.",
+          );
         else notice("Password reset.");
       });
       el("password-reset").showModal();
@@ -259,23 +315,34 @@ async function renderProfile() {
   ]);
   if (state.view !== "profile" || location.hash !== routeHash) return;
   const base = `#/users/${profile.id}`;
-  const comments = history.items.map((comment) => {
-    const params = new URLSearchParams({ image: comment.image_id, comment: comment.id });
-    if (cursor) params.set("cursor", cursor);
-    return `<article class="comment"><small>${new Date(comment.created_at).toLocaleString()}${comment.reply_to ? " · Reply" : ""}</small><p>${esc(comment.text)}</p><a href="${base}?${params}">View thread: ${esc(comment.image_name)}</a></article>`;
-  }).join("");
+  const comments = history.items
+    .map((comment) => {
+      const params = new URLSearchParams({
+        image: comment.image_id,
+        comment: comment.id,
+      });
+      if (cursor) params.set("cursor", cursor);
+      return `<article class="comment"><small>${new Date(comment.created_at).toLocaleString()}${comment.reply_to ? " · Reply" : ""}</small><p>${esc(comment.text)}</p><a href="${base}?${params}">View thread: ${esc(comment.image_name)}</a></article>`;
+    })
+    .join("");
   el("path").textContent = `Paradise HD : User : ${profile.name}`;
-  el("view").innerHTML = `${header(profile.name, `Joined ${new Date(profile.registered).toLocaleDateString()} · ${profile.comment_count} comments`)}
+  el("view").innerHTML =
+    `${header(profile.name, `Joined ${new Date(profile.registered).toLocaleDateString()} · ${profile.comment_count} comments`)}
     ${profile.id === state.me.id ? `<form id="own-password" class="edit-form account-form"><h3>Change My Password</h3><label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label>${passwordFields()}<p class="form-error" role="alert"></p><button class="button" type="submit">Change Password</button></form>` : ""}
-    <div class="section-title"><h3>COMMENT HISTORY</h3></div>${comments || '<p>No comments yet.</p>'}
+    <div class="section-title"><h3>COMMENT HISTORY</h3></div>${comments || "<p>No comments yet.</p>"}
     <div class="pager">${cursor ? `<a class="button" href="${base}">Newest comments</a>` : ""}${history.next_cursor ? `<a class="button" href="${base}?cursor=${encodeURIComponent(history.next_cursor)}">Older comments</a>` : ""}</div>`;
-  el("status").textContent = `${profile.comment_count} comments across media pages`;
+  el("status").textContent =
+    `${profile.comment_count} comments across media pages`;
   const ownForm = el("own-password");
-  if (ownForm) bindAccountForm(ownForm, async (form) => {
-    await accountRequest("/api/me/password", "PUT", { current_password: form.get("current_password"), password: form.get("password") });
-    ownForm.reset();
-    showReauthentication("Password changed. Old password no longer works.");
-  });
+  if (ownForm)
+    bindAccountForm(ownForm, async (form) => {
+      await accountRequest("/api/me/password", "PUT", {
+        current_password: form.get("current_password"),
+        password: form.get("password"),
+      });
+      ownForm.reset();
+      showReauthentication("Password changed. Old password no longer works.");
+    });
 }
 
 const crumbs = (path) => {
@@ -374,94 +441,190 @@ function commentTree(comments) {
       .join("");
   return draw(roots);
 }
-async function inspect(id, commentID = null) {
-  const item = await api(`/api/images/${id}`);
-  el("inspector-title").textContent = item.name;
-  const edit =
-    state.me.admin && !state.readOnly
-      ? `<form id="metadata-form" class="edit-form"><strong>EDIT METADATA</strong><label>Title<input name="name" maxlength="200" value="${esc(item.name)}"></label><label>Tags<input name="tags" maxlength="1000" value="${esc(item.tags.join(", "))}"></label><button class="button">Save Changes</button></form>`
-      : "";
-  const source = state.readOnly ? item.media_url : item.file_url;
-  const commentForm = state.readOnly
-    ? ""
-    : `<form id="comment-form" class="edit-form"><input type="hidden" name="reply_to"><label id="reply-label">Add context<textarea name="text" maxlength="${MAX_COMMENT_BYTES}" aria-describedby="comment-limit" required></textarea></label><small id="comment-limit">Up to 8 KiB of UTF-8 text (8,192 bytes).</small><button class="button">Post Comment</button></form>`;
-  const favorite = state.readOnly
-    ? ""
-    : `<button class="button favorite-action" data-favorite="${item.id}" data-active="${item.favorite}">${item.favorite ? "★ Remove Favorite" : "☆ Add Favorite"}</button>`;
-  el("inspector-body").innerHTML =
-    `<div class="inspector-grid"><div>${item.kind === "video" ? `<video class="hero-media" controls preload="none" src="${source}"></video>` : `<img class="hero-media" src="${source}" alt="${esc(item.name)}">`}</div><aside><div class="info-table"><div class="info-row"><span>Kind</span><span>${item.kind}</span></div><div class="info-row"><span>Size</span><span>${size(item.file_size)}</span></div><div class="info-row"><span>Views</span><span>${item.hits}</span></div><div class="info-row"><span>Uploader</span><span>${esc(item.uploader || "Unknown")}</span></div><div class="info-row"><span>Indexed</span><span>${new Date(item.created_at).toLocaleString()}</span></div><div class="info-row"><span>Path</span><span>${esc(item.path.replaceAll("$", "/"))}</span></div></div><div class="tag-line">${tagLinks(item.tags)}</div>${favorite}${edit}</aside></div><section class="comments"><div class="section-title"><h3>COMMENTS</h3></div><div id="comment-list">${commentTree(item.comments) || "<p>No comments yet.</p>"}</div>${commentForm}</section>`;
-  el("inspector").showModal();
-  state.inspectorHash = new URLSearchParams(location.hash.split("?")[1]).get("image") === String(id) ? location.hash : null;
-  if (commentID) {
-    const target = el(`comment-${commentID}`);
-    if (target) {
-      target.classList.add("comment-highlight");
-      target.scrollIntoView({ block: "center" });
-      target.focus({ preventScroll: true });
+function imageHash(id, commentID = null) {
+  const [path = "#/home", query = ""] = (location.hash || "#/home").split("?");
+  const params = new URLSearchParams(query);
+  params.set("image", id);
+  params.delete("comment");
+  if (commentID) params.set("comment", commentID);
+  return `${path}?${params}`;
+}
+function openImage(id, commentID = null) {
+  const hash = imageHash(id, commentID);
+  if (hash !== location.hash) history.pushState(null, "", hash);
+  inspect(id, commentID);
+}
+function cancelInspectorRequests() {
+  state.inspectorRequest++;
+  state.inspectorController?.abort();
+  clearTimeout(state.similarTimer);
+  state.similarTimer = null;
+}
+async function loadSimilar(id, request, signal, attempt = 0) {
+  const generation = (state.similarRequest = (state.similarRequest || 0) + 1);
+  const current = () =>
+    state.inspectorRequest === request &&
+    state.similarRequest === generation &&
+    el("inspector").open &&
+    !signal.aborted;
+  try {
+    const data = await api(`/api/images/${id}/similar`, { signal });
+    if (!current()) return;
+    const messages = {
+      no_context: "Add tags or comments to discover similar images.",
+      indexing:
+        "Similarity indexing… Recommendations will appear when context is processed.",
+      retrying: "Similarity indexing is retrying. Try again shortly.",
+    };
+    el("similar-body").innerHTML =
+      data.status === "ready"
+        ? data.items.length
+          ? cards(data.items)
+          : "<p>No similar images indexed yet.</p>"
+        : `<p role="status">${esc(messages[data.status] || "Similarity unavailable.")}</p><button type="button" class="button" data-similar-refresh="${id}">Refresh Similar Images</button>`;
+    if (["indexing", "retrying"].includes(data.status) && attempt < 5) {
+      state.similarTimer = setTimeout(
+        () => loadSimilar(id, request, signal, attempt + 1),
+        5000,
+      );
     }
+  } catch (error) {
+    if (!current()) return;
+    el("similar-body").innerHTML =
+      `<p role="status">Could not load similar images.</p><button type="button" class="button" data-similar-refresh="${id}">Retry</button>`;
   }
-  const metadata = el("metadata-form");
-  if (metadata)
-    metadata.onsubmit = async (event) => {
-      event.preventDefault();
-      const form = new FormData(event.target);
-      try {
-        await api(`/api/images/${id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: form.get("name") }),
-        });
-        await api(`/api/images/${id}/context`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            tags: form
-              .get("tags")
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean),
-          }),
-        });
-        notice("Metadata saved.");
-        el("inspector").close();
-        render();
-      } catch (error) {
-        notice(error.message, true);
+}
+async function inspect(id, commentID = null) {
+  const dialog = el("inspector");
+  if (!dialog.open) state.inspectorOpener = document.activeElement;
+  cancelInspectorRequests();
+  const request = state.inspectorRequest;
+  const controller = new AbortController();
+  state.inspectorController = controller;
+  state.inspectorID = String(id);
+  state.inspectorHash = location.hash;
+  releaseInspectorMedia();
+  el("inspector-title").textContent = "Loading Media…";
+  el("inspector-body").innerHTML =
+    '<p role="status">Loading image and comments…</p>';
+  el("inspector-body").setAttribute("aria-busy", "true");
+  if (!dialog.open) dialog.showModal();
+  const current = () =>
+    state.inspectorRequest === request &&
+    dialog.open &&
+    !controller.signal.aborted;
+  try {
+    const item = await api(`/api/images/${id}`, { signal: controller.signal });
+    if (!current()) return;
+    el("inspector-title").textContent = item.name;
+    const edit =
+      state.me.admin && !state.readOnly
+        ? `<form id="metadata-form" class="edit-form"><strong>EDIT METADATA</strong><label>Title<input name="name" maxlength="200" value="${esc(item.name)}"></label><label>Tags<input name="tags" maxlength="1000" value="${esc(item.tags.join(", "))}"></label><button class="button">Save Changes</button></form>`
+        : "";
+    const source = state.readOnly ? item.media_url : item.file_url;
+    const commentForm = state.readOnly
+      ? ""
+      : `<form id="comment-form" class="edit-form"><input type="hidden" name="reply_to"><label id="reply-label">Add context<textarea name="text" maxlength="${MAX_COMMENT_BYTES}" aria-describedby="comment-limit" required></textarea></label><small id="comment-limit">Up to 8 KiB of UTF-8 text (8,192 bytes).</small><button class="button">Post Comment</button></form>`;
+    const favorite = state.readOnly
+      ? ""
+      : `<button class="button favorite-action" data-favorite="${item.id}" data-active="${item.favorite}" aria-pressed="${item.favorite}">${item.favorite ? "★ Remove Favorite" : "☆ Add Favorite"}</button>`;
+    el("inspector-body").innerHTML =
+      `<div class="inspector-grid"><div>${item.kind === "video" ? `<video class="hero-media" controls preload="none" src="${source}"></video>` : `<img class="hero-media" src="${source}" alt="${esc(item.name)}">`}</div><aside><div class="info-table"><div class="info-row"><span>Kind</span><span>${item.kind}</span></div><div class="info-row"><span>Size</span><span>${size(item.file_size)}</span></div><div class="info-row"><span>Views</span><span>${item.hits}</span></div><div class="info-row"><span>Uploader</span><span>${esc(item.uploader || "Unknown")}</span></div><div class="info-row"><span>Indexed</span><span>${new Date(item.created_at).toLocaleString()}</span></div><div class="info-row"><span>Path</span><span>${esc(item.path.replaceAll("$", "/"))}</span></div></div><div id="inspector-tags" class="tag-line">${tagLinks(item.tags)}</div>${favorite}${edit}</aside></div><section class="comments"><div class="section-title"><h3>COMMENTS</h3></div><div id="comment-list">${commentTree(item.comments) || "<p>No comments yet.</p>"}</div>${commentForm}</section><section id="similar-images" aria-labelledby="similar-title"><div class="section-title"><h3 id="similar-title">SIMILAR IMAGES</h3><small>COMMENTS + TAGS</small></div><div id="similar-body"><p role="status">Finding similar images…</p></div></section><p id="inspector-notice" role="status"></p>`;
+    el("inspector-body").removeAttribute("aria-busy");
+    el("inspector-body").scrollTop = 0;
+    el("inspector-title").focus({ preventScroll: true });
+    loadSimilar(id, request, controller.signal);
+    if (commentID) {
+      const target = el(`comment-${commentID}`);
+      if (target) {
+        target.classList.add("comment-highlight");
+        target.scrollIntoView({ block: "center" });
+        target.focus({ preventScroll: true });
       }
-    };
-  const comments = el("comment-form");
-  if (comments) {
-    comments.text.addEventListener("input", () => {
-      const bytes = new TextEncoder().encode(comments.text.value.trim()).length;
-      comments.text.setCustomValidity(bytes > MAX_COMMENT_BYTES ? "Comment exceeds 8 KiB (8,192 UTF-8 bytes)." : "");
-    });
-    el("comment-list").onclick = (event) => {
-      if (event.target.dataset.reply) {
-        comments.reply_to.value = event.target.dataset.reply;
-        el("reply-label").firstChild.textContent =
-          `Reply to comment #${event.target.dataset.reply}`;
-      }
-    };
-    comments.onsubmit = async (event) => {
-      event.preventDefault();
-      if (!comments.reportValidity()) return;
-      const form = new FormData(event.target);
-      try {
-        await api(`/api/images/${id}/comments`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            text: form.get("text"),
-            reply_to: form.get("reply_to")
-              ? Number(form.get("reply_to"))
-              : null,
-          }),
-        });
-        inspect(id);
-      } catch (error) {
-        notice(error.message, true);
-      }
-    };
+    }
+    const metadata = el("metadata-form");
+    if (metadata)
+      metadata.onsubmit = async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.target);
+        try {
+          await api(`/api/images/${id}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: form.get("name") }),
+          });
+          const updated = await api(`/api/images/${id}/context`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              tags: form
+                .get("tags")
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean),
+            }),
+          });
+          if (!current()) return;
+          el("inspector-title").textContent = updated.name;
+          el("inspector-tags").innerHTML = tagLinks(updated.tags);
+          el("inspector-notice").textContent = "Metadata saved.";
+          clearTimeout(state.similarTimer);
+          loadSimilar(id, request, controller.signal);
+        } catch (error) {
+          if (current()) el("inspector-notice").textContent = error.message;
+        }
+      };
+    const comments = el("comment-form");
+    if (comments) {
+      comments.text.addEventListener("input", () => {
+        const bytes = new TextEncoder().encode(
+          comments.text.value.trim(),
+        ).length;
+        comments.text.setCustomValidity(
+          bytes > MAX_COMMENT_BYTES
+            ? "Comment exceeds 8 KiB (8,192 UTF-8 bytes)."
+            : "",
+        );
+      });
+      el("comment-list").onclick = (event) => {
+        if (event.target.dataset.reply) {
+          comments.reply_to.value = event.target.dataset.reply;
+          el("reply-label").firstChild.textContent =
+            `Reply to comment #${event.target.dataset.reply}`;
+        }
+      };
+      comments.onsubmit = async (event) => {
+        event.preventDefault();
+        if (!comments.reportValidity()) return;
+        const form = new FormData(event.target);
+        try {
+          const updated = await api(`/api/images/${id}/comments`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: form.get("text"),
+              reply_to: form.get("reply_to")
+                ? Number(form.get("reply_to"))
+                : null,
+            }),
+          });
+          if (!current()) return;
+          el("comment-list").innerHTML = commentTree(updated.comments);
+          comments.reset();
+          el("reply-label").firstChild.textContent = "Add context";
+          el("inspector-notice").textContent = "Comment posted.";
+          clearTimeout(state.similarTimer);
+          loadSimilar(id, request, controller.signal);
+        } catch (error) {
+          if (current()) el("inspector-notice").textContent = error.message;
+        }
+      };
+    }
+  } catch (error) {
+    if (!current()) return;
+    el("inspector-body").removeAttribute("aria-busy");
+    el("inspector-body").innerHTML =
+      `<p role="status">${esc(error.message)}</p><button type="button" class="button" data-image="${id}">Retry</button>`;
   }
 }
 
@@ -507,23 +670,40 @@ async function readRoute() {
   state.userID = profile ? Number(profile[1]) : null;
   state.commentCursor = params.get("cursor") || "";
   state.userQuery = view === "users" ? params.get("q") || "" : "";
-  state.page = Math.max(1, Math.min(1000000, Math.floor(Number(params.get("page")) || 1)));
+  state.page = Math.max(
+    1,
+    Math.min(1000000, Math.floor(Number(params.get("page")) || 1)),
+  );
   state.tag = params.get("tag") || "";
   state.query = params.get("q") || "";
   el("search").value = view === "users" ? "" : state.query;
-  if (el("inspector").open && !params.has("image")) el("inspector").close();
-  await render();
+  if (el("inspector").open && !params.has("image")) {
+    cancelInspectorRequests();
+    el("inspector").close();
+  }
+  const baseParams = new URLSearchParams(params);
+  baseParams.delete("image");
+  baseParams.delete("comment");
+  const baseRoute = path + "?" + baseParams;
+  if (state.baseRoute !== baseRoute) {
+    state.baseRoute = baseRoute;
+    await render();
+  }
   if (location.hash !== routeHash) return;
   if (/^[1-9][0-9]*$/.test(params.get("image") || "")) {
     try {
-      const commentID = /^[1-9][0-9]*$/.test(params.get("comment") || "") ? params.get("comment") : null;
+      const commentID = /^[1-9][0-9]*$/.test(params.get("comment") || "")
+        ? params.get("comment")
+        : null;
       await inspect(params.get("image"), commentID);
     } catch (error) {
       notice(error.message, true);
     }
   }
 }
-addEventListener("hashchange", () => { if (state.me) readRoute(); });
+addEventListener("hashchange", () => {
+  if (state.me) readRoute();
+});
 document.addEventListener("click", async (event) => {
   const target = event.target.closest(
     "button,[data-image],[data-tag],[data-folder],[data-preview],[data-document]",
@@ -539,17 +719,55 @@ document.addEventListener("click", async (event) => {
   }
   if (target.dataset.themeChoice) applyTheme(target.dataset.themeChoice);
   if (target.dataset.go) navigate(target.dataset.go);
-  if (target.dataset.image) inspect(target.dataset.image);
+  if (target.dataset.image) openImage(target.dataset.image);
+  if (target.dataset.similarRefresh && state.inspectorController) {
+    clearTimeout(state.similarTimer);
+    loadSimilar(
+      target.dataset.similarRefresh,
+      state.inspectorRequest,
+      state.inspectorController.signal,
+    );
+  }
   if (target.dataset.favorite) {
     const active = target.dataset.active === "true";
     try {
-      await api(`/api/images/${target.dataset.favorite}/favorite`, {
-        method: active ? "DELETE" : "PUT",
-      });
-      if (target.classList.contains("favorite-action")) {
-        el("inspector").close();
-        await inspect(target.dataset.favorite);
-      } else render();
+      const data = await api(
+        `/api/images/${target.dataset.favorite}/favorite`,
+        {
+          method: active ? "DELETE" : "PUT",
+        },
+      );
+      const delta =
+        data.favorite === (target.dataset.active === "true")
+          ? 0
+          : data.favorite
+            ? 1
+            : -1;
+      document
+        .querySelectorAll(`[data-favorite="${target.dataset.favorite}"]`)
+        .forEach((button) => {
+          button.dataset.active = String(data.favorite);
+          button.setAttribute("aria-pressed", String(data.favorite));
+          button.title = data.favorite ? "Remove favorite" : "Add favorite";
+          button.textContent = button.classList.contains("favorite-action")
+            ? data.favorite
+              ? "★ Remove Favorite"
+              : "☆ Add Favorite"
+            : data.favorite
+              ? "★"
+              : "☆";
+        });
+      document
+        .querySelectorAll(
+          `[data-count-image="${target.dataset.favorite}"][data-count="favorites"]`,
+        )
+        .forEach((counter) => {
+          counter.textContent = Math.max(
+            0,
+            Number(counter.textContent) + delta,
+          );
+        });
+      if (state.view === "favorites" && !el("inspector").open) render();
     } catch (error) {
       notice(error.message, true);
     }
@@ -564,7 +782,7 @@ document.addEventListener("click", async (event) => {
     renderExplorer(target.dataset.folder);
   if (target.dataset.preview) {
     const indexed = await loadImages({ q: target.dataset.preview, limit: 1 });
-    if (indexed.items.length) inspect(indexed.items[0].id);
+    if (indexed.items.length) openImage(indexed.items[0].id);
     else notice("File is being indexed in the background.");
   }
   if (target.dataset.document) {
@@ -585,13 +803,23 @@ el("search").addEventListener("keydown", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if ((event.key !== "Enter" && event.key !== " ") || !event.target.dataset.image) return;
+  if (
+    (event.key !== "Enter" && event.key !== " ") ||
+    !event.target.dataset.image ||
+    event.target.tagName === "BUTTON"
+  )
+    return;
   event.preventDefault();
-  inspect(event.target.dataset.image);
+  openImage(event.target.dataset.image);
 });
-document.addEventListener("error", (event) => {
-  if (event.target.classList?.contains("video-thumbnail")) event.target.remove();
-}, true);
+document.addEventListener(
+  "error",
+  (event) => {
+    if (event.target.classList?.contains("video-thumbnail"))
+      event.target.remove();
+  },
+  true,
+);
 drawerToggle.addEventListener("click", () => {
   setDrawer(!document.body.classList.contains("drawer-open"));
 });
@@ -600,7 +828,10 @@ drawerBackdrop.addEventListener("click", () => {
   drawerToggle.focus();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && document.body.classList.contains("drawer-open")) {
+  if (
+    event.key === "Escape" &&
+    document.body.classList.contains("drawer-open")
+  ) {
     setDrawer(false);
     drawerToggle.focus();
   }
@@ -638,8 +869,11 @@ const releaseInspectorMedia = () => {
   body.querySelectorAll("img").forEach((image) => image.removeAttribute("src"));
   body.replaceChildren();
 };
-el("inspector").addEventListener("close", releaseInspectorMedia);
 el("inspector").addEventListener("close", () => {
+  if (el("inspector").open) return;
+  cancelInspectorRequests();
+  releaseInspectorMedia();
+  state.inspectorID = null;
   if (state.inspectorHash && state.inspectorHash === location.hash) {
     const [path, query] = location.hash.split("?");
     const params = new URLSearchParams(query);
@@ -648,8 +882,13 @@ el("inspector").addEventListener("close", () => {
     history.replaceState(null, "", path + (params.size ? `?${params}` : ""));
   }
   state.inspectorHash = null;
+  if (state.inspectorOpener?.isConnected)
+    state.inspectorOpener.focus({ preventScroll: true });
 });
-addEventListener("pagehide", releaseInspectorMedia);
+addEventListener("pagehide", () => {
+  cancelInspectorRequests();
+  releaseInspectorMedia();
+});
 setInterval(
   () =>
     (el("clock").textContent = new Date().toLocaleTimeString([], {

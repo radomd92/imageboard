@@ -477,6 +477,7 @@ nav button.active {
   box-shadow: var(--shadow-card-hover);
 }
 .media-card > .media-open {
+  display: block;
   width: 100%;
   padding: 0;
   border: 0;
@@ -549,6 +550,14 @@ nav button.active {
   display: block;
   margin-top: 5px;
   color: var(--muted);
+}
+.media-card > .tag-line {
+  margin: 0;
+  padding: 0 9px 9px;
+}
+.card-info .ranking-count {
+  color: var(--accent-strong);
+  font-weight: bold;
 }
 .tag-line {
   min-height: 16px;
@@ -723,6 +732,42 @@ nav button.active {
   max-height: calc(92vh - 30px);
   padding: 18px;
   overflow: auto;
+}
+#inspector {
+  width: min(1600px, 96vw);
+  max-width: 96vw;
+  max-height: 96dvh;
+}
+#inspector .modal-body {
+  max-height: calc(96dvh - 30px);
+}
+#inspector .inspector-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+}
+#inspector .hero-media {
+  max-height: 70dvh;
+}
+#inspector .info-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#inspector .close-box {
+  min-width: 22px;
+  min-height: 22px;
+}
+#similar-images {
+  margin-top: 28px;
+}
+#inspector-notice {
+  color: var(--accent-strong);
+}
+@media (max-width: 760px) {
+  #inspector .inspector-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #inspector .hero-media {
+    max-height: 60dvh;
+  }
 }
 .search-help-body dt {
   margin-top: 12px;

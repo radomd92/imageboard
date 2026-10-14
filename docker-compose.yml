@@ -43,6 +43,21 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
 
+  embedding-worker:
+    build:
+      context: .
+      dockerfile: go_api/embedding-worker.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      EMBEDDING_TAG_WEIGHT: 2
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
   nginx:
     build: ./nginx_file_server
     restart: unless-stopped

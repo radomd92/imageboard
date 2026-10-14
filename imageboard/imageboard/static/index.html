@@ -101,10 +101,10 @@
       </section>
     </main>
 
-    <dialog id="inspector" class="window modal">
+    <dialog id="inspector" class="window modal" aria-labelledby="inspector-title">
       <header class="titlebar">
-        <button class="close-box" data-close="inspector">×</button>
-        <h2 id="inspector-title">Media Inspector</h2>
+        <button class="close-box" data-close="inspector" aria-label="Close media inspector">×</button>
+        <h2 id="inspector-title" tabindex="-1">Media Inspector</h2>
         <i></i>
       </header>
       <div id="inspector-body" class="modal-body"></div>

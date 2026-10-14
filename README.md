@@ -2,6 +2,16 @@
 
 Private Go media catalog. PostgreSQL stores image metadata, tags, comments, users, and AES-256-GCM encrypted generated thumbnails. Nginx directly serves mounted read-only media; Go generates thumbnails and stores only encrypted blobs in PostgreSQL. PostgreSQL and the application run as separate Compose projects so application redeployments cannot replace or remove the database service. A separate Go worker indexes media asynchronously through PostgreSQL-backed durable jobs. Python is retained only for Alembic migrations and local account administration; it serves no HTTP API.
 
+## Dashboard and similar images
+
+The dashboard shows up to eight **Most Viewed**, **Most Commented**, and **Most Favorited** images. Views use the existing all-time view counter; comment totals include replies; favorites count currently active favorites across users. Each card shows its ranking count and the current user's favorite state.
+
+The enlarged media inspector shows **Similar Images** after comments. Recommendations use lightweight lexical vectors from tags and all comments/replies: normalized Unicode words, common-word filtering, log-frequency weights, extra tag weight, and exact tag-phrase features. Each vector retains at most 128 weighted terms. Indexed sparse dot products return the ten closest positive cosine matches, excluding the current image. This matches shared words/tags rather than semantic synonyms and uses no model service or PostgreSQL extension.
+
+The `embedding-worker` service builds vectors in the background, with a short pause between images to limit CPU/database load. Database triggers coalesce annotation changes into one durable job per image/transaction. Changed images take priority over the initial backfill. Leases, retry backoff, revision checks, and cascading cleanup handle interrupted work, concurrent edits, and deindexing. The API shows indexing/empty states while vectors are pending.
+
+`EMBEDDING_TAG_WEIGHT` defaults to `2` in Compose. Changing it and restarting the worker schedules a rebuild; the algorithm/version fingerprint prevents mixing incompatible vectors. Existing annotated images are queued by migration `0008_discovery_vectors`. Backfill continues after application startup, so recommendations fill in gradually.
+
 ## Deploy
 
 1. Copy `.env.example` to `.env`; set strong database password, health token, media mount path, and TLS certificate paths.
@@ -129,6 +139,8 @@ curl --user user -X POST https://host:8443/api/images/42/comments \
 `GET /api/images/{id}` returns image metadata, tags, comments, and direct media URL. `GET /api/images/{id}/file` increments view count then redirects to protected Nginx media. `POST /api/images/{id}/context` replaces tags when `tags` supplied and appends comment when `comment` supplied.
 
 `POST /api/images/{id}/comments` appends a comment using `text`; optional `reply_to` selects a parent comment on the same image. Any authenticated user may comment, with authorship derived from HTTP Basic identity. Only administrators may update tags. Comment writes remain unavailable on Tor.
+
+`GET /api/dashboard` includes `most_viewed`, `most_commented`, and `most_favorited` summary lists. `GET /api/images/{id}/similar` returns `{status, items}` with at most ten lightweight summaries; statuses are `ready`, `indexing`, `retrying`, or `no_context`. Summaries include counts, tags, thumbnail URLs, personalized favorite state, and similarity scores where applicable. Both endpoints require HTTP Basic authentication and are readable on Tor.
 
 Account endpoints:
 
