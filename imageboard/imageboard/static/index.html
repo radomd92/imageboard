@@ -40,6 +40,9 @@
               <button data-view="explorer" class="admin-only">
                 <span>▣</span>Media Explorer
               </button>
+              <button data-view="users" class="admin-only account-admin hidden">
+                <span>●</span>Users
+              </button>
             </nav>
             <div class="theme-card">
               <span>APPEARANCE</span>
@@ -59,8 +62,8 @@
             <div class="user-panel">
               <span class="user-icon">●</span>
               <div>
-                <strong id="username">Loading</strong
-                ><small id="role">USER</small>
+                <strong><a id="username" href="#/home">Loading</a></strong>
+                <small id="role">USER</small>
               </div>
             </div>
           </aside>
@@ -114,6 +117,23 @@
         <i></i>
       </header>
       <pre id="document-reader-content" class="document-content"></pre>
+    </dialog>
+
+    <dialog id="password-reset" class="window modal account-modal">
+      <header class="titlebar">
+        <button class="close-box" data-close="password-reset">×</button>
+        <h2>Reset Password</h2><i></i>
+      </header>
+      <div class="modal-body">
+        <p id="password-reset-user"></p>
+        <form id="password-reset-form" class="edit-form account-form">
+          <label>New password<input name="password" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label>
+          <label>Confirm password<input name="confirmation" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label>
+          <p>14–256 characters. Existing password stops working immediately.</p>
+          <p class="form-error" role="alert"></p>
+          <button class="button" type="submit">Set Password</button>
+        </form>
+      </div>
     </dialog>
 
     <dialog id="search-help" class="window modal">

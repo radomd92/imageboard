@@ -44,6 +44,7 @@ type user struct {
 
 type cacheEntry struct {
 	user    user
+	hash    string
 	expires time.Time
 }
 
@@ -75,6 +76,7 @@ type image struct {
 type comment struct {
 	ID        int32     `json:"id"`
 	Author    *string   `json:"author"`
+	AuthorID  *int32    `json:"author_id"`
 	Text      string    `json:"text"`
 	CreatedAt time.Time `json:"created_at"`
 	ReplyTo   *int32    `json:"reply_to"`
@@ -115,7 +117,7 @@ func main() {
 		scryptSem: make(chan struct{}, envInt("AUTH_SCRYPT_CONCURRENCY", 4)),
 	}
 	server := &http.Server{
-		Addr:              ":8000",
+		Addr:              env("IMAGEBOARD_LISTEN_ADDR", ":8000"),
 		Handler:           app.routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       30 * time.Second,
@@ -138,6 +140,13 @@ func (a *application) routes() http.Handler {
 	router.Route("/api", func(apiRouter chi.Router) {
 		apiRouter.Get("/internal/authorize", a.withAuth(a.authorizeMedia))
 		apiRouter.Get("/me", a.withAuth(a.me))
+		apiRouter.Put("/me/password", a.accountWrite(a.withAuth(a.changeOwnPassword)))
+		apiRouter.Get("/admin/users", a.withAdmin(a.listUsers))
+		apiRouter.Post("/admin/users", a.accountWrite(a.withAdmin(a.createUser)))
+		apiRouter.Patch("/admin/users/{id}", a.accountWrite(a.withAdmin(a.updateUser)))
+		apiRouter.Put("/admin/users/{id}/password", a.accountWrite(a.withAdmin(a.resetUserPassword)))
+		apiRouter.Get("/users/{id}", a.withAuth(a.userProfile))
+		apiRouter.Get("/users/{id}/comments", a.withAuth(a.userComments))
 		apiRouter.Get("/images", a.withAuth(a.listImages))
 		apiRouter.Get("/images/untagged", a.withAuth(a.listUntaggedImages))
 		apiRouter.Get("/tags", a.withAuth(a.listTags))
@@ -203,9 +212,6 @@ func (a *application) authenticate(r *http.Request) (user, error) {
 	a.cacheMu.Lock()
 	entry, found := a.authCache[key]
 	a.cacheMu.Unlock()
-	if found && now.Before(entry.expires) {
-		return entry.user, nil
-	}
 	var stored, privileges string
 	var account user
 	var banned bool
@@ -214,11 +220,20 @@ func (a *application) authenticate(r *http.Request) (user, error) {
 		return user{}, errors.New("invalid credentials")
 	}
 	account.Admin = privileges == "admin"
+	if found && now.Before(entry.expires) && entry.hash == stored && entry.user.ID == account.ID {
+		return account, nil
+	}
 	if !a.verifyPassword(stored, password) {
 		return user{}, errors.New("invalid credentials")
 	}
 	a.cacheMu.Lock()
-	a.authCache[key] = cacheEntry{user: account, expires: now.Add(a.config.authTTL)}
+	// Expired proofs need not accumulate as passwords are rotated.
+	for cachedKey, cached := range a.authCache {
+		if !now.Before(cached.expires) {
+			delete(a.authCache, cachedKey)
+		}
+	}
+	a.authCache[key] = cacheEntry{user: account, hash: stored, expires: now.Add(a.config.authTTL)}
 	a.cacheMu.Unlock()
 	return account, nil
 }
@@ -244,7 +259,7 @@ func (a *application) verifyPassword(encoded, password string) bool {
 	blockSize, blockSizeErr := strconv.Atoi(params[1])
 	parallelism, parallelismErr := strconv.Atoi(params[2])
 	digest, decodeErr := hex.DecodeString(parts[2])
-	if costErr != nil || blockSizeErr != nil || parallelismErr != nil || cost < 2 || cost > 32768 || blockSize < 1 || blockSize > 16 || parallelism < 1 || parallelism > 4 || decodeErr != nil {
+	if costErr != nil || blockSizeErr != nil || parallelismErr != nil || cost < 2 || cost > 32768 || blockSize < 1 || blockSize > 16 || parallelism < 1 || parallelism > 4 || decodeErr != nil || len(digest) != 64 || len(parts[1]) < 1 || len(parts[1]) > 128 {
 		return false
 	}
 	a.scryptSem <- struct{}{}

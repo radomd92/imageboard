@@ -32,6 +32,7 @@ printf '%s\n' "$password" | "${compose[@]}" run --rm -T --entrypoint python migr
 import sys
 
 import os
+import unicodedata
 
 import psycopg
 from werkzeug.security import generate_password_hash
@@ -39,22 +40,28 @@ from werkzeug.security import generate_password_hash
 username = sys.argv[1]
 password = sys.stdin.readline().rstrip("\n")
 
-if len(password) < 14:
-    raise SystemExit("Password must contain at least 14 characters")
+if not 14 <= len(password) <= 256 or any(unicodedata.category(char) == "Cc" for char in password):
+    raise SystemExit("Password must contain 14-256 characters without control characters")
 
 database_url = os.environ["IMAGEBOARD_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://", 1)
 with psycopg.connect(database_url) as connection, connection.cursor() as cursor:
-    cursor.execute('SELECT 1 FROM "user" WHERE name = %s', (username,))
-    if cursor.fetchone() is None:
+    cursor.execute("SELECT pg_advisory_xact_lock(734921, 1)")
+    cursor.execute("SELECT id FROM \"user\" WHERE name = %s", (username,))
+    account = cursor.fetchone()
+    if account is None:
         raise SystemExit("User not found")
     cursor.execute(
-        'UPDATE "user" SET password = %s WHERE name = %s',
-        (generate_password_hash(password, method="scrypt"), username),
+        "UPDATE \"user\" SET password = %s WHERE name = %s",
+        (generate_password_hash(password, method="scrypt:32768:8:1"), username),
+    )
+    cursor.execute(
+        "INSERT INTO audit_event (actor_id, action, object_type, object_id, created_at) "
+        "VALUES (NULL, %s, %s, %s, NOW())",
+        ("reset_user_password_cli", "user", str(account[0])),
     )
 ' "$username"
 
 unset password
 trap - EXIT
 
-"${compose[@]}" restart app
 printf 'Password rotated. Close authenticated browser windows.\n'

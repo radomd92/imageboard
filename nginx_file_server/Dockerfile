@@ -6,6 +6,8 @@ RUN apt-get update \
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY onion.conf /etc/nginx/conf.d/onion.conf
+COPY account_locations.conf /etc/nginx/account_locations.conf
+COPY account_proxy.conf /etc/nginx/account_proxy.conf
 
 EXPOSE 8443
 

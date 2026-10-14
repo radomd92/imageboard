@@ -19,10 +19,10 @@ Private Go media catalog. PostgreSQL stores image metadata, tags, comments, user
    docker compose up -d --build
    ```
 
-4. Create first user. Public registration is intentionally absent.
+4. Create first administrator. Additional accounts can be created in the admin-only Users dashboard.
 
    ```bash
-   docker compose run --rm --entrypoint python migrator -m imageboard.create_user administrator
+   docker compose run --rm --entrypoint python migrator -m imageboard.create_user administrator --admin
    ```
 
 5. Read the generated v3 onion address after Tor reaches healthy state.
@@ -67,7 +67,17 @@ Rotate an HTTP Basic password without exposing it in command arguments or enviro
 ./rotate_password.sh
 ```
 
-The optional first argument selects another username. The script restarts the Go API after updating the Werkzeug-compatible scrypt hash, invalidating its short-lived authentication cache.
+The optional first argument selects another username. The script updates the Werkzeug-compatible scrypt hash. The API rechecks current account state on each request, so the old password stops working without restarting the application.
+
+## Users and profiles
+
+Browser-native HTTP Basic authentication remains the login screen. Administrators use **Users** to search accounts, create users, reset passwords, set administrator status, and disable/reactivate accounts. Passwords contain 14–256 characters without control characters and are stored only as randomly salted scrypt hashes. Usernames contain 3–100 characters, with no colon, control characters, or surrounding whitespace. Usernames are case-sensitive and fixed after creation.
+
+Disabling preserves comments and profiles but rejects subsequent authentication. The last active administrator cannot be disabled or demoted. Legacy accounts with disabled password placeholders need a password reset before reactivation. Account changes are audited without storing passwords or hashes in audit events.
+
+Click your sidebar username to see your profile and change your password using your current password. After changing your own password, use **Sign In Again** to reload the protected page; if the browser continues sending old credentials, close the authenticated browser session and reopen the site. Browsers manage Basic credentials themselves; the application does not persist them in browser storage.
+
+Comment usernames link to authenticated user profiles with newest-first, paginated comment/reply history across media pages. **View thread** opens the original media and highlights the comment. Profile hash URLs can be bookmarked and reloaded. Other members cannot access account administration or change another user's password.
 
 ## PostgreSQL lifecycle
 
@@ -93,13 +103,17 @@ The script creates a UTC-timestamped `.tar.bz2` archive containing a plain SQL d
 
 The `tor` service publishes Nginx's internal HTTP-only port as onion port 80. The onion protocol already authenticates and encrypts traffic end to end, so TLS is intentionally omitted on this path. Port 8080 listens only on loopback inside the network namespace shared by Nginx and Tor; it is not reachable from the host or other containers.
 
-HTTP Basic authentication remains required. The onion site is read-only: Nginx permits authenticated `GET`/`HEAD` API requests needed by the UI, rejects API mutation methods, and blocks the nominally read-only file endpoint because it records view-count changes. Media and thumbnails remain authenticated. The onion UI hides editing, commenting, and indexing controls.
+HTTP Basic authentication remains required. The onion media catalog is read-only: Nginx permits authenticated `GET`/`HEAD` requests, rejects media mutation methods, and blocks the nominally read-only file endpoint because it records view-count changes. Media and thumbnails remain authenticated. The onion UI hides media editing, commenting, and indexing controls.
+
+Account management is available on Tor: Nginx permits `PUT /api/me/password`, `POST /api/admin/users`, `PATCH /api/admin/users/{id}`, and `PUT /api/admin/users/{id}/password`. Administrator authorization is enforced by Go on every admin endpoint. Account writes require JSON and `X-Imageboard-Request: account`; cross-origin browser requests are rejected. Onion transport encrypts these requests end to end through Tor.
 
 The onion identity and private keys live in the `tor-data` volume. Preserve that volume to keep the address stable, protect its contents as credentials, and never commit exported keys. Removing the volume creates a new onion address on next start.
 
 ## API
 
-All `/api` and `/media` requests require HTTP Basic authentication. Use TLS; Basic credentials must never traverse HTTP.
+All `/api` and `/media` requests require HTTP Basic authentication. Use TLS for direct access, or Tor-encrypted transport for the onion endpoint as described above.
+
+`POST /api/images/{id}/context` accepts JSON bodies up to 8 KiB (8,192 bytes), including tags and comments for context enrichment. Individual comment length and tag length/count limits still apply.
 
 ```bash
 curl --user user:password https://host:8443/api/images/42
@@ -111,4 +125,20 @@ curl --user user:password -X POST https://host:8443/api/images/42/context \
 
 `GET /api/images/{id}` returns image metadata, tags, comments, and direct media URL. `GET /api/images/{id}/file` increments view count then redirects to protected Nginx media. `POST /api/images/{id}/context` replaces tags when `tags` supplied and appends comment when `comment` supplied.
 
-Nginx rejects writes, hides directory indexes, disables symlinks, authenticates each media request through the Go API, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled; the Go thumbnail cache generates image previews only.
+Account endpoints:
+
+| Endpoint | Access | Body/query |
+| --- | --- | --- |
+| `GET /api/admin/users` | Admin | `q`, `page`, `limit` (maximum 100) |
+| `POST /api/admin/users` | Admin | `name`, `password`, `admin` |
+| `PATCH /api/admin/users/{id}` | Admin | `admin` and/or `disabled` |
+| `PUT /api/admin/users/{id}/password` | Admin | `password` |
+| `PUT /api/me/password` | Authenticated | `current_password`, `password` |
+| `GET /api/users/{id}` | Authenticated | Username, registration date, comment count |
+| `GET /api/users/{id}/comments` | Authenticated | `cursor`, `limit` (maximum 100); response includes `next_cursor` |
+
+Account writes require `Content-Type: application/json` and `X-Imageboard-Request: account`, with an 8 KiB request limit. Responses never include password hashes. Comment responses include nullable `author_id`; history includes `image_id` and `image_name`.
+
+For account integration tests, migrate a disposable PostgreSQL database to head, then run `go test -race ./...` from `go_api` with `IMAGEBOARD_TEST_DATABASE_URL` set to its connection URL. Tests create and remove an isolated schema cloned from the migrated tables. CI runs these checks against a dedicated PostgreSQL service.
+
+Nginx restricts mutation methods by endpoint, hides directory indexes, disables symlinks, authenticates each media request through the Go API, restricts TLS, rate-limits, and applies security headers. Video thumbnails remain disabled; the Go thumbnail cache generates image previews only.

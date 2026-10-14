@@ -6,8 +6,9 @@ const state = {
   tag: "",
   theme: "rorisu",
   me: null,
-  history: ["home"],
-  historyIndex: 0,
+  userID: null,
+  userQuery: "",
+  commentCursor: "",
   readOnly: location.hostname.endsWith(".onion"),
   indexedFolders: new Set(),
   indexJobs: new Set(),
@@ -140,6 +141,142 @@ async function renderTags() {
   el("status").textContent = `${tags.length} tags`;
 }
 
+async function refreshMe() {
+  state.me = await api("/api/me");
+  el("username").textContent = state.me.name;
+  el("username").href = `#/users/${state.me.id}`;
+  el("role").textContent = `${state.me.admin ? "ADMINISTRATOR" : "MEMBER"}${state.readOnly ? " · MEDIA READ ONLY" : ""}`;
+  document.querySelectorAll(".admin-only").forEach((node) => {
+    node.classList.toggle("hidden", !state.me.admin || (state.readOnly && !node.classList.contains("account-admin")));
+  });
+}
+
+const passwordFields = () => `<label>New password<input name="password" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label><label>Confirm password<input name="confirmation" type="password" minlength="14" maxlength="256" autocomplete="new-password" required></label><p>14–256 characters. Passwords are stored as salted scrypt hashes.</p>`;
+const accountRequest = (url, method, body) => api(url, {
+  method,
+  headers: { "content-type": "application/json", "X-Imageboard-Request": "account" },
+  body: JSON.stringify(body),
+});
+
+function bindAccountForm(form, submit) {
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const errorBox = form.querySelector(".form-error");
+    errorBox.textContent = "";
+    const data = new FormData(form);
+    if (data.has("confirmation") && data.get("password") !== data.get("confirmation")) {
+      errorBox.textContent = "Passwords do not match.";
+      return;
+    }
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      await submit(data);
+    } catch (error) {
+      errorBox.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+function showReauthentication(message) {
+  if (el("password-reset").open) el("password-reset").close();
+  el("view").innerHTML = `${header("Account updated", message)}<p>Sign in again through browser HTTP authentication. If browser keeps sending old credentials, close authenticated browser session and reopen site.</p><button id="reauthenticate" type="button" class="button">Sign In Again</button>`;
+  el("reauthenticate").onclick = () => location.reload();
+  notice(message);
+}
+
+async function renderUsers() {
+  // API remains the authority even when frontend identity is stale.
+  const routeHash = location.hash;
+  const data = await api(`/api/admin/users?${new URLSearchParams({ page: state.page, q: state.userQuery })}`);
+  if (state.view !== "users" || location.hash !== routeHash) return;
+  el("path").textContent = "Paradise HD : Users";
+  el("view").innerHTML = `${header("Users", `${data.total} accounts · administrator access`)}
+    <form id="user-search" class="account-search"><label>Find username<input name="q" type="search" maxlength="100" value="${esc(state.userQuery)}"></label><button class="button" type="submit">Search</button></form>
+    <div class="account-table-wrap"><table class="account-table"><thead><tr><th>Username</th><th>Permissions and status</th><th>Password</th></tr></thead><tbody>${data.items.map((item) => `<tr><td><a href="#/users/${item.id}">${esc(item.name)}</a><small>Joined ${new Date(item.registered).toLocaleDateString()}</small></td><td><form class="account-status" data-user-id="${item.id}"><label><input type="checkbox" name="admin" ${item.admin ? "checked" : ""}> Admin</label><label><input type="checkbox" name="disabled" ${item.disabled ? "checked" : ""}> Disabled</label><button class="button" type="submit">Save</button><p class="form-error" role="alert"></p></form></td><td><button type="button" class="button" data-reset-user="${item.id}">Reset Password</button></td></tr>`).join("") || '<tr><td colspan="3">No accounts found.</td></tr>'}</tbody></table></div>
+    <div class="pager"><button class="button" type="button" id="users-previous" ${data.page <= 1 ? "disabled" : ""}>Previous</button><span>Page ${data.page} of ${Math.max(1, Math.ceil(data.total / data.limit))}</span><button class="button" type="button" id="users-next" ${data.page * data.limit >= data.total ? "disabled" : ""}>Next</button></div>
+    <form id="create-user" class="edit-form account-form"><h3>Create User</h3><label>Username<input name="name" minlength="3" maxlength="100" autocomplete="off" required></label>${passwordFields()}<label class="checkbox-label"><input name="admin" type="checkbox"> Administrator</label><p class="form-error" role="alert"></p><button class="button" type="submit">Create User</button></form>`;
+  el("status").textContent = `${data.total} accounts`;
+  const usersRoute = (page, q = state.userQuery) => { location.hash = `#/users?${new URLSearchParams({ page, q })}`; };
+  el("user-search").onsubmit = (event) => {
+    event.preventDefault();
+    usersRoute(1, new FormData(event.target).get("q"));
+  };
+  el("users-previous").onclick = () => usersRoute(data.page - 1);
+  el("users-next").onclick = () => usersRoute(data.page + 1);
+  const createForm = el("create-user");
+  bindAccountForm(createForm, async (form) => {
+    await accountRequest("/api/admin/users", "POST", { name: form.get("name"), password: form.get("password"), admin: form.has("admin") });
+    createForm.reset();
+    notice("User created.");
+    if (state.view === "users") await renderUsers();
+  });
+  document.querySelectorAll(".account-status").forEach((form) => {
+    const item = data.items.find((item) => item.id === Number(form.dataset.userId));
+    bindAccountForm(form, async (fields) => {
+      const disabled = fields.has("disabled");
+      if (disabled && !item.disabled && !confirm(`Disable ${item.name}? Access stops immediately; comments remain.`)) return;
+      await accountRequest(`/api/admin/users/${item.id}`, "PATCH", { admin: fields.has("admin"), disabled });
+      if (item.id === state.me.id && disabled) {
+        showReauthentication("Your account is now disabled. Sign in with another active account.");
+        return;
+      }
+      await refreshMe();
+      notice("Account updated.");
+      if (!state.me.admin) location.hash = `#/users/${state.me.id}`;
+      else if (state.view === "users") await renderUsers();
+    });
+  });
+  document.querySelectorAll("[data-reset-user]").forEach((button) => {
+    button.onclick = () => {
+      const item = data.items.find((item) => item.id === Number(button.dataset.resetUser));
+      const form = el("password-reset-form");
+      form.reset();
+      form.querySelector(".form-error").textContent = "";
+      el("password-reset-user").textContent = `Set new password for ${item.name}.`;
+      bindAccountForm(form, async (fields) => {
+        await accountRequest(`/api/admin/users/${item.id}/password`, "PUT", { password: fields.get("password") });
+        form.reset();
+        el("password-reset").close();
+        if (item.id === state.me.id) showReauthentication("Password changed. Old password no longer works.");
+        else notice("Password reset.");
+      });
+      el("password-reset").showModal();
+    };
+  });
+}
+
+async function renderProfile() {
+  const routeHash = location.hash;
+  const profileID = state.userID;
+  const cursor = state.commentCursor;
+  const [profile, history] = await Promise.all([
+    api(`/api/users/${profileID}`),
+    api(`/api/users/${profileID}/comments?${new URLSearchParams({ cursor })}`),
+  ]);
+  if (state.view !== "profile" || location.hash !== routeHash) return;
+  const base = `#/users/${profile.id}`;
+  const comments = history.items.map((comment) => {
+    const params = new URLSearchParams({ image: comment.image_id, comment: comment.id });
+    if (cursor) params.set("cursor", cursor);
+    return `<article class="comment"><small>${new Date(comment.created_at).toLocaleString()}${comment.reply_to ? " · Reply" : ""}</small><p>${esc(comment.text)}</p><a href="${base}?${params}">View thread: ${esc(comment.image_name)}</a></article>`;
+  }).join("");
+  el("path").textContent = `Paradise HD : User : ${profile.name}`;
+  el("view").innerHTML = `${header(profile.name, `Joined ${new Date(profile.registered).toLocaleDateString()} · ${profile.comment_count} comments`)}
+    ${profile.id === state.me.id ? `<form id="own-password" class="edit-form account-form"><h3>Change My Password</h3><label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label>${passwordFields()}<p class="form-error" role="alert"></p><button class="button" type="submit">Change Password</button></form>` : ""}
+    <div class="section-title"><h3>COMMENT HISTORY</h3></div>${comments || '<p>No comments yet.</p>'}
+    <div class="pager">${cursor ? `<a class="button" href="${base}">Newest comments</a>` : ""}${history.next_cursor ? `<a class="button" href="${base}?cursor=${encodeURIComponent(history.next_cursor)}">Older comments</a>` : ""}</div>`;
+  el("status").textContent = `${profile.comment_count} comments across media pages`;
+  const ownForm = el("own-password");
+  if (ownForm) bindAccountForm(ownForm, async (form) => {
+    await accountRequest("/api/me/password", "PUT", { current_password: form.get("current_password"), password: form.get("password") });
+    ownForm.reset();
+    showReauthentication("Password changed. Old password no longer works.");
+  });
+}
+
 const crumbs = (path) => {
   const parts = path ? path.split("$") : [];
   return `<button data-folder="">Paradise HD</button>${parts.map((part, i) => `›<button data-folder="${esc(parts.slice(0, i + 1).join("$"))}">${esc(part)}</button>`).join("")}`;
@@ -231,12 +368,12 @@ function commentTree(comments) {
     items
       .map(
         (c) =>
-          `<div class="comment depth-${Math.min(d, 2)}"><strong>${esc(c.author || "Deleted user")}</strong> <small>${new Date(c.created_at).toLocaleString()}</small><p>${esc(c.text)}</p>${state.readOnly ? "" : `<button class="button" data-reply="${c.id}">Reply</button>`}${draw(c.children, d + 1)}</div>`,
+          `<div id="comment-${c.id}" tabindex="-1" class="comment depth-${Math.min(d, 2)}"><strong>${c.author_id ? `<a href="#/users/${c.author_id}">${esc(c.author)}</a>` : esc(c.author || "Deleted user")}</strong> <small>${new Date(c.created_at).toLocaleString()}</small><p>${esc(c.text)}</p>${state.readOnly ? "" : `<button class="button" data-reply="${c.id}">Reply</button>`}${draw(c.children, d + 1)}</div>`,
       )
       .join("");
   return draw(roots);
 }
-async function inspect(id) {
+async function inspect(id, commentID = null) {
   const item = await api(`/api/images/${id}`);
   el("inspector-title").textContent = item.name;
   const edit =
@@ -253,6 +390,15 @@ async function inspect(id) {
   el("inspector-body").innerHTML =
     `<div class="inspector-grid"><div>${item.kind === "video" ? `<video class="hero-media" controls preload="none" src="${source}"></video>` : `<img class="hero-media" src="${source}" alt="${esc(item.name)}">`}</div><aside><div class="info-table"><div class="info-row"><span>Kind</span><span>${item.kind}</span></div><div class="info-row"><span>Size</span><span>${size(item.file_size)}</span></div><div class="info-row"><span>Views</span><span>${item.hits}</span></div><div class="info-row"><span>Uploader</span><span>${esc(item.uploader || "Unknown")}</span></div><div class="info-row"><span>Indexed</span><span>${new Date(item.created_at).toLocaleString()}</span></div><div class="info-row"><span>Path</span><span>${esc(item.path.replaceAll("$", "/"))}</span></div></div><div class="tag-line">${tagLinks(item.tags)}</div>${favorite}${edit}</aside></div><section class="comments"><div class="section-title"><h3>COMMENTS</h3></div><div id="comment-list">${commentTree(item.comments) || "<p>No comments yet.</p>"}</div>${commentForm}</section>`;
   el("inspector").showModal();
+  state.inspectorHash = new URLSearchParams(location.hash.split("?")[1]).get("image") === String(id) ? location.hash : null;
+  if (commentID) {
+    const target = el(`comment-${commentID}`);
+    if (target) {
+      target.classList.add("comment-highlight");
+      target.scrollIntoView({ block: "center" });
+      target.focus({ preventScroll: true });
+    }
+  }
   const metadata = el("metadata-form");
   if (metadata)
     metadata.onsubmit = async (event) => {
@@ -314,17 +460,22 @@ async function inspect(id) {
 }
 
 async function render() {
+  const routeHash = location.hash;
   try {
     if (state.view === "home") await renderHome();
     else if (state.view === "tags") await renderTags();
     else if (state.view === "explorer")
       await renderExplorer(state.folder || "");
-    else
+    else if (state.view === "users") await renderUsers();
+    else if (state.view === "profile") await renderProfile();
+    else if (["library", "untagged", "favorites"].includes(state.view))
       await renderLibrary(
         state.view === "untagged",
         state.view === "favorites",
       );
+    else throw new Error("Unknown page");
   } catch (error) {
+    if (location.hash !== routeHash) return;
     el("view").innerHTML =
       `<div class="empty"><strong>Could not open this view.</strong><p>${esc(error.message)}</p></div>`;
     notice(error.message, true);
@@ -335,19 +486,38 @@ async function render() {
       b.classList.toggle("active", b.dataset.view === state.view),
     );
 }
-function navigate(view, push = true) {
-  state.view = view;
-  state.page = 1;
-  state.tag = "";
-  state.query = "";
-  el("search").value = "";
-  if (push) {
-    state.history = state.history.slice(0, state.historyIndex + 1);
-    state.history.push(view);
-    state.historyIndex++;
-  }
-  render();
+function navigate(view) {
+  const hash = `#/${view}`;
+  if (location.hash === hash) readRoute();
+  else location.hash = hash;
 }
+async function readRoute() {
+  const routeHash = location.hash;
+  const [path, query = ""] = location.hash.slice(1).split("?");
+  const params = new URLSearchParams(query);
+  const profile = /^\/users\/([1-9][0-9]*)$/.exec(path);
+  const view = profile ? "profile" : path.replace(/^\//, "") || "home";
+  state.view = view;
+  state.userID = profile ? Number(profile[1]) : null;
+  state.commentCursor = params.get("cursor") || "";
+  state.userQuery = view === "users" ? params.get("q") || "" : "";
+  state.page = Math.max(1, Math.min(1000000, Math.floor(Number(params.get("page")) || 1)));
+  state.tag = params.get("tag") || "";
+  state.query = params.get("q") || "";
+  el("search").value = view === "users" ? "" : state.query;
+  if (el("inspector").open && !params.has("image")) el("inspector").close();
+  await render();
+  if (location.hash !== routeHash) return;
+  if (/^[1-9][0-9]*$/.test(params.get("image") || "")) {
+    try {
+      const commentID = /^[1-9][0-9]*$/.test(params.get("comment") || "") ? params.get("comment") : null;
+      await inspect(params.get("image"), commentID);
+    } catch (error) {
+      notice(error.message, true);
+    }
+  }
+}
+addEventListener("hashchange", () => { if (state.me) readRoute(); });
 document.addEventListener("click", async (event) => {
   const target = event.target.closest(
     "button,[data-image],[data-tag],[data-folder],[data-preview],[data-document]",
@@ -379,16 +549,10 @@ document.addEventListener("click", async (event) => {
     }
   }
   if (target.dataset.tag) {
-    state.view = "library";
-    state.tag = target.dataset.tag;
-    state.query = "";
-    el("search").value = "";
-    state.page = 1;
-    render();
+    location.hash = `#/library?${new URLSearchParams({ tag: target.dataset.tag })}`;
   }
   if (target.dataset.page) {
-    state.page = Number(target.dataset.page);
-    render();
+    location.hash = `#/${state.view}?${new URLSearchParams({ page: target.dataset.page, q: state.query, tag: state.tag })}`;
   }
   if (target.dataset.folder !== undefined)
     renderExplorer(target.dataset.folder);
@@ -407,17 +571,11 @@ document.addEventListener("click", async (event) => {
   if (target.dataset.close) el(target.dataset.close).close();
 });
 el("search").addEventListener("search", () => {
-  state.query = el("search").value.trim();
-  state.view = "library";
-  state.page = 1;
-  render();
+  location.hash = `#/library?${new URLSearchParams({ q: el("search").value.trim() })}`;
 });
 el("search").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    state.query = event.target.value.trim();
-    state.view = "library";
-    state.page = 1;
-    render();
+    location.hash = `#/library?${new URLSearchParams({ q: event.target.value.trim() })}`;
   }
 });
 document.addEventListener("keydown", (event) => {
@@ -443,22 +601,23 @@ document.addEventListener("keydown", (event) => {
 });
 mobileViewport.addEventListener("change", () => setDrawer(false));
 el("back").onclick = () => {
-  if (state.historyIndex > 0) {
-    state.historyIndex--;
-    navigate(state.history[state.historyIndex], false);
-  }
+  history.back();
 };
 el("forward").onclick = () => {
-  if (state.historyIndex < state.history.length - 1) {
-    state.historyIndex++;
-    navigate(state.history[state.historyIndex], false);
-  }
+  history.forward();
 };
 el("inspector").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
 });
 el("document-reader").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
+});
+el("password-reset").addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+el("password-reset").addEventListener("close", () => {
+  el("password-reset-form").reset();
+  el("password-reset-form").querySelector(".form-error").textContent = "";
 });
 el("search-help").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
@@ -474,6 +633,16 @@ const releaseInspectorMedia = () => {
   body.replaceChildren();
 };
 el("inspector").addEventListener("close", releaseInspectorMedia);
+el("inspector").addEventListener("close", () => {
+  if (state.inspectorHash && state.inspectorHash === location.hash) {
+    const [path, query] = location.hash.split("?");
+    const params = new URLSearchParams(query);
+    params.delete("image");
+    params.delete("comment");
+    history.replaceState(null, "", path + (params.size ? `?${params}` : ""));
+  }
+  state.inspectorHash = null;
+});
 addEventListener("pagehide", releaseInspectorMedia);
 setInterval(
   () =>
@@ -485,19 +654,8 @@ setInterval(
 );
 (async () => {
   try {
-    state.me = await api("/api/me");
-    el("username").textContent = state.me.name;
-    el("role").textContent = state.readOnly
-      ? "READ ONLY"
-      : state.me.admin
-        ? "ADMINISTRATOR"
-        : "MEMBER";
-    document
-      .querySelectorAll(".admin-only")
-      .forEach((node) =>
-        node.classList.toggle("hidden", !state.me.admin || state.readOnly),
-      );
-    await render();
+    await refreshMe();
+    await readRoute();
   } catch (error) {
     notice(error.message, true);
   }

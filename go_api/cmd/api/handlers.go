@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+const maxContextRequestBytes = 8 * 1024
+
 func (a *application) listImages(w http.ResponseWriter, r *http.Request, currentUser user) {
 	query := r.URL.Query()
 	search, err := parseImageSearch(query.Get("q"))
@@ -387,7 +389,7 @@ func (a *application) scanImages(ctx context.Context, rows pgx.Rows, userID int3
 		return nil, err
 	}
 	tagRows.Close()
-	commentRows, err := a.pool.Query(ctx, `SELECT m.image, m.id, u.name, m.text, m.message_date, m.reply_to
+	commentRows, err := a.pool.Query(ctx, `SELECT m.image, m.id, u.name, u.id, m.text, m.message_date, m.reply_to
 FROM message m LEFT JOIN "user" u ON u.id = m.from_user WHERE m.image = ANY($1) ORDER BY m.message_date, m.id`, imageIDs)
 	if err != nil {
 		return nil, err
@@ -395,7 +397,7 @@ FROM message m LEFT JOIN "user" u ON u.id = m.from_user WHERE m.image = ANY($1) 
 	for commentRows.Next() {
 		var imageID int32
 		var item comment
-		if err := commentRows.Scan(&imageID, &item.ID, &item.Author, &item.Text, &item.CreatedAt, &item.ReplyTo); err != nil {
+		if err := commentRows.Scan(&imageID, &item.ID, &item.Author, &item.AuthorID, &item.Text, &item.CreatedAt, &item.ReplyTo); err != nil {
 			commentRows.Close()
 			return nil, err
 		}
@@ -819,7 +821,7 @@ func (a *application) contextUpdate(w http.ResponseWriter, r *http.Request, user
 		Tags    *[]string `json:"tags"`
 		Comment *string   `json:"comment"`
 	}
-	if !decodeJSON(w, r, &body) {
+	if !decodeJSONWithLimit(w, r, &body, maxContextRequestBytes) {
 		return
 	}
 	if body.Tags == nil && body.Comment == nil {
@@ -1120,7 +1122,11 @@ func cleanTag(value string) (string, error) {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+	return decodeJSONWithLimit(w, r, target, 1024)
+}
+
+func decodeJSONWithLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		writeError(w, 422, "Invalid request")

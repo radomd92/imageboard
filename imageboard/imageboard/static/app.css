@@ -802,6 +802,83 @@ nav button.active {
 .admin-only.hidden {
   display: none;
 }
+.user-panel a,
+.comment a,
+.account-table a {
+  color: var(--accent-strong);
+  overflow-wrap: anywhere;
+}
+.account-form {
+  max-width: 560px;
+}
+.account-modal {
+  max-width: 560px;
+}
+.account-form label {
+  display: block;
+}
+.account-form .checkbox-label,
+.account-status label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 10px 8px 0;
+}
+.account-form input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+.account-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 15px 0;
+}
+.account-search input {
+  display: block;
+  padding: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--line-mid);
+}
+.account-table-wrap {
+  overflow-x: auto;
+}
+.account-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-card);
+}
+.account-table th,
+.account-table td {
+  padding: 10px;
+  border: 1px solid var(--line-hair);
+  text-align: left;
+}
+.account-table th {
+  background: var(--bg-panel-strong);
+}
+.account-table small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+.form-error {
+  color: var(--error-line);
+  overflow-wrap: anywhere;
+}
+.comment p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comment-highlight {
+  outline: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+.pager a {
+  color: var(--ink);
+  text-decoration: none;
+}
 
 .document-placeholder {
   display: grid;
